@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Folio Desk",
+  "version": "0.1.0",
+  "identifier": "io.github.justinechang39.foliodesk",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Folio Desk",
+        "width": 1380,
+        "height": 920,
+        "minWidth": 860,
+        "minHeight": 600,
+        "backgroundColor": "#edf0f3",
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' blob: data:; worker-src 'self' blob:; connect-src ipc: http://ipc.localhost 'self'; object-src 'none'; base-uri 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "category": "Productivity",
+    "shortDescription": "PDF workspaces, side by side.",
+    "copyright": "Copyright \u00a9 2026 Justine Chang",
+    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "fileAssociations": [
+      {
+        "ext": ["pdf"],
+        "name": "PDF document",
+        "role": "Viewer",
+        "mimeType": "application/pdf"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.3"
+    },
+    "resources": [
+      "../LICENSE",
+      "../THIRD_PARTY_NOTICES.md",
+      "../licenses/ThirdPartyLicenses.txt"
+    ]
+  }
+}

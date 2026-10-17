@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Local workspace window events only",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-destroy"]
+}
