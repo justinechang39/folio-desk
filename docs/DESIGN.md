@@ -14,3 +14,9 @@ Palette: ink #24313c, slate #64717f, desk #edf0f3, paper #ffffff, focus #176b86,
 The visual emphasis is the arrangement of real sheets. No dashboard cards, promotional copy, or decorative gradients. Layout changes preserve documents in the shelf. Each document retains its page, zoom, fit, and rotation when moved. Drag to swap panes; move menus support keyboard users and transfers to other workspaces. Linked page turns are explicit and off by default. Session metadata stays local; original PDFs are never modified.
 
 Review against brief: a fixed symmetric two-pane viewer would limit reuse, so layouts include one, two columns, two rows, three columns, and four panes. Extra documents remain available instead of disappearing when the layout shrinks. A vertical shelf adds navigation without crowding the page controls. Mobile styling is not the target; the native window has an 860px minimum width, with a collapsible shelf for smaller screens.
+
+## Appearance and continuous reading
+
+Retain the existing desk structure and system type. Add one Appearance control at the right of the toolbar. The picker separates palette (Orange, Nord, Dracula, Solarized) from mode (System, Light, Dark), with compact palette previews and a visible selected state. Orange is the default: burnt orange #b84b08 on pale neutral surfaces in light mode, warm orange #ffab70 on charcoal #202124 in dark mode. Theme the app chrome using semantic tokens; leave PDF paper and ink unchanged. This keeps the reading material accurate while giving controls a consistent selected/focus color.
+
+Continuous pages stack vertically in each pane with a quiet gap. Render only visible pages and their immediate neighbors, preserving page and fractional reading position on layout/zoom changes. Existing page controls remain useful for precise jumps. Independent scrolling is the default; explicit Link pages continues to synchronize page numbers without feedback loops.

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   getDocument,
   GlobalWorkerOptions,
-  TextLayer,
   type PDFDocumentProxy,
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
@@ -24,6 +23,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import type { Doc } from "./model";
+import ContinuousPages from "./ContinuousPages";
 import { readPdf } from "./bridge";
 GlobalWorkerOptions.workerSrc = workerUrl;
 export function Tool({
@@ -52,6 +52,7 @@ type Props = {
   onOpen: () => void;
   onPatch: (patch: Partial<Doc>) => void;
   onPage: (page: number) => void;
+  onScrollPosition: (page: number, offset: number) => void;
   onCount: (count: number) => void;
   onScale: (scale: number) => void;
   onHide: () => void;
@@ -63,8 +64,7 @@ type Props = {
 export default function PdfPane(p: Props) {
   const { doc } = p;
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null),
-    [error, setError] = useState(""),
-    [rendering, setRendering] = useState(false);
+    [error, setError] = useState("");
   const [unlock, setUnlock] = useState<{
       submit: (password: string) => void;
       wrong: boolean;
@@ -79,8 +79,7 @@ export default function PdfPane(p: Props) {
     [searching, setSearching] = useState(false),
     [searched, setSearched] = useState(false);
   const searchGeneration = useRef(0),
-    body = useRef<HTMLDivElement>(null),
-    sheet = useRef<HTMLDivElement>(null);
+    body = useRef<HTMLDivElement>(null);
   const countRef = useRef(p.onCount);
   countRef.current = p.onCount;
   useEffect(() => {
@@ -143,77 +142,6 @@ export default function PdfPane(p: Props) {
   useEffect(() => {
     setPageInput(String(doc?.page ?? 1));
   }, [doc?.page]);
-  useEffect(() => {
-    if (!pdf || !doc || !sheet.current || size.width === 0) return;
-    let cancelled = false;
-    let render:
-      | ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]>
-      | undefined;
-    let text: TextLayer | undefined;
-    const target = sheet.current;
-    target.replaceChildren();
-    setRendering(true);
-    pdf
-      .getPage(Math.min(doc.page, pdf.numPages))
-      .then(async (page) => {
-        if (cancelled) return;
-        const rotation = (page.rotate + doc.rotation) % 360;
-        const base = page.getViewport({ scale: 1, rotation });
-        const width = Math.max(100, size.width - 48),
-          height = Math.max(100, size.height - 48);
-        const zoom =
-          doc.fit === "page"
-            ? Math.min(width / base.width, height / base.height)
-            : doc.fit === "width"
-              ? width / base.width
-              : doc.zoom;
-        setScale(zoom);
-        p.onScale(zoom);
-        const viewport = page.getViewport({ scale: zoom, rotation });
-        const pixelRatio = Math.min(
-          window.devicePixelRatio || 1,
-          Math.sqrt(12_000_000 / (viewport.width * viewport.height)),
-        );
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.floor(viewport.width * pixelRatio);
-        canvas.height = Math.floor(viewport.height * pixelRatio);
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-        target.style.width = `${viewport.width}px`;
-        target.style.height = `${viewport.height}px`;
-        target.style.setProperty("--total-scale-factor", String(zoom));
-        target.append(canvas);
-        render = page.render({
-          canvas,
-          viewport,
-          transform: [pixelRatio, 0, 0, pixelRatio, 0, 0],
-        });
-        await render.promise;
-        if (cancelled) return;
-        const layer = document.createElement("div");
-        layer.className = "textLayer";
-        target.append(layer);
-        text = new TextLayer({
-          textContentSource: page.streamTextContent(),
-          container: layer,
-          viewport,
-        });
-        await text.render();
-        if (!cancelled) setRendering(false);
-      })
-      .catch((e) => {
-        if (!cancelled && e?.name !== "RenderingCancelledException") {
-          setError(`Could not render this page: ${e.message}`);
-          setRendering(false);
-        }
-      });
-    body.current?.scrollTo(0, 0);
-    return () => {
-      cancelled = true;
-      render?.cancel();
-      text?.cancel();
-    };
-  }, [pdf, doc?.page, doc?.zoom, doc?.fit, doc?.rotation, size]);
   useEffect(() => {
     const element = body.current;
     if (!element) return;
@@ -480,16 +408,19 @@ export default function PdfPane(p: Props) {
                 <span>Opening PDF…</span>
               </div>
             ) : (
-              <div className="sheet-wrap">
-                <div className="pdf-sheet" ref={sheet} />
-              </div>
+              <ContinuousPages
+                pdf={pdf}
+                doc={doc}
+                size={size}
+                scrollRef={body}
+                onScrollPosition={p.onScrollPosition}
+                onScale={(value) => {
+                  setScale(value);
+                  p.onScale(value);
+                }}
+              />
             )}
           </div>
-          {rendering && pdf && !error && (
-            <div className="render-status">
-              <LoaderCircle size={12} className="spin" /> Rendering
-            </div>
-          )}
         </>
       ) : (
         <div className="empty-pane">

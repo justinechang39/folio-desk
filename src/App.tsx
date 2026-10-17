@@ -23,12 +23,17 @@ import {
   Check,
   AlertCircle,
   BookOpen,
+  Palette,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import PdfPane, { Tool } from "./PdfPane";
 import {
   addDocuments,
   assignDocument,
   changePage,
+  scrollDocument,
   layouts,
   moveDocument,
   newSession,
@@ -52,6 +57,7 @@ import {
   saveSession,
   type Imports,
 } from "./bridge";
+import { themes, themeVariables, type Mode } from "./themes";
 const layoutIcons = {
   single: Square,
   columns: Columns2,
@@ -64,6 +70,7 @@ type Dialog =
   | { kind: "close"; view: string }
   | { kind: "move"; view: string; doc: string }
   | { kind: "help" }
+  | { kind: "appearance" }
   | null;
 export default function App() {
   const [session, setSession] = useState<Session>(newSession),
@@ -78,6 +85,39 @@ export default function App() {
     [dropHover, setDropHover] = useState(false),
     [importing, setImporting] = useState(false);
   const [, setCountTick] = useState(0);
+  const [systemDark, setSystemDark] = useState(
+    () => matchMedia("(prefers-color-scheme: dark)").matches,
+  );
+  const resolvedMode =
+    session.appearance.mode === "system"
+      ? systemDark
+        ? "dark"
+        : "light"
+      : session.appearance.mode;
+  useEffect(() => {
+    const media = matchMedia("(prefers-color-scheme: dark)");
+    const changed = () => setSystemDark(media.matches);
+    media.addEventListener("change", changed);
+    return () => media.removeEventListener("change", changed);
+  }, []);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.mode = resolvedMode;
+    root.dataset.theme = session.appearance.theme;
+    root.style.colorScheme = resolvedMode;
+    for (const [key, value] of Object.entries(
+      themeVariables(session.appearance, systemDark),
+    ))
+      root.style.setProperty(key, value);
+  }, [session.appearance, systemDark, resolvedMode]);
+  useEffect(() => {
+    if (native && ready)
+      void getCurrentWindow()
+        .setTheme(
+          session.appearance.mode === "system" ? null : session.appearance.mode,
+        )
+        .catch(() => {});
+  }, [session.appearance.mode, ready]);
   const scales = useRef<Record<string, number>>({});
   const input = useRef<HTMLInputElement>(null),
     targetSlot = useRef<number | undefined>(undefined),
@@ -114,7 +154,12 @@ export default function App() {
   function removeView(id: string) {
     setSession((s) => {
       const views = s.views.filter((v) => v.id !== id);
-      if (!views.length) return newSession();
+      if (!views.length)
+        return {
+          ...newSession(),
+          appearance: s.appearance,
+          sidebar: s.sidebar,
+        };
       return {
         ...s,
         views,
@@ -514,6 +559,12 @@ export default function App() {
           <Link2 size={16} />
           Link pages
         </button>
+        <Tool
+          label="Appearance"
+          onClick={() => setDialog({ kind: "appearance" })}
+        >
+          <Palette size={19} />
+        </Tool>
       </div>
       {(notice || saveError) && (
         <div className="notice" role="alert">
@@ -623,6 +674,12 @@ export default function App() {
                   doc &&
                   editView((v) => changePage(v, doc.id, page, counts.current))
                 }
+                onScrollPosition={(page, offset) =>
+                  doc &&
+                  editView((v) =>
+                    scrollDocument(v, doc.id, page, offset, counts.current),
+                  )
+                }
                 onCount={(count) => {
                   if (!doc) return;
                   counts.current[doc.id] = count;
@@ -676,12 +733,87 @@ export default function App() {
                 ? "Close workspace?"
                 : dialog?.kind === "move"
                   ? "Organize document"
-                  : "Using Folio Desk"}
+                  : dialog?.kind === "appearance"
+                    ? "Appearance"
+                    : "Using Folio Desk"}
           </h2>
           <Tool label="Close dialog" onClick={() => setDialog(null)}>
             <X size={18} />
           </Tool>
         </div>
+        {dialog?.kind === "appearance" && (
+          <div className="appearance-settings">
+            <fieldset>
+              <legend>Mode</legend>
+              <div className="mode-picker">
+                {(
+                  [
+                    { id: "system", label: "System", Icon: Monitor },
+                    { id: "light", label: "Light", Icon: Sun },
+                    { id: "dark", label: "Dark", Icon: Moon },
+                  ] as const
+                ).map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    aria-pressed={session.appearance.mode === id}
+                    onClick={() =>
+                      setSession((s) => ({
+                        ...s,
+                        appearance: { ...s.appearance, mode: id as Mode },
+                      }))
+                    }
+                  >
+                    <Icon size={17} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Theme</legend>
+              <div className="theme-picker">
+                {themes.map((theme) => {
+                  const colors = theme[resolvedMode];
+                  return (
+                    <button
+                      key={theme.id}
+                      className="theme-option"
+                      aria-pressed={session.appearance.theme === theme.id}
+                      onClick={() =>
+                        setSession((s) => ({
+                          ...s,
+                          appearance: { ...s.appearance, theme: theme.id },
+                        }))
+                      }
+                    >
+                      <span
+                        className="theme-preview"
+                        style={{
+                          background: colors.desk,
+                          borderColor: colors.line,
+                        }}
+                      >
+                        <span style={{ background: colors.surface }} />
+                        <i style={{ background: colors.accent }} />
+                        <span style={{ background: "#fff" }} />
+                        <span style={{ background: "#fff" }} />
+                      </span>
+                      <span>
+                        {theme.label}
+                        {session.appearance.theme === theme.id && (
+                          <Check size={15} />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+            <p className="appearance-note">
+              Saved automatically. PDF pages keep their original colors.
+            </p>
+          </div>
+        )}
         {dialog?.kind === "rename" && (
           <form
             onSubmit={(e) => {
@@ -832,9 +964,9 @@ export default function App() {
               same controls.
             </p>
             <p>
-              Link pages turns visible PDFs to the same page number. Search
-              finds pages containing selectable text; scanned PDFs need OCR from
-              another app.
+              Scroll each PDF independently. Link pages turns visible PDFs to
+              the same page number. Search finds pages containing selectable
+              text; scanned PDFs need OCR from another app.
             </p>
             <p>
               Workspaces reopen automatically. Files stay on your Mac, and

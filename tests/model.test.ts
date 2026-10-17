@@ -75,3 +75,26 @@ describe("workspace operations", () => {
     expect(() => restoreSession(s)).toThrow();
   });
 });
+
+it("migrates old sessions to Orange/System without losing documents", () => {
+  const s = newSession();
+  s.views[0] = addDocuments(s.views[0], files);
+  const legacy = JSON.parse(JSON.stringify(s));
+  delete legacy.appearance;
+  delete legacy.views[0].documents[0].offset;
+  const result = restoreSession(legacy);
+  expect(result.appearance).toEqual({ theme: "orange", mode: "system" });
+  expect(result.views[0].documents).toHaveLength(5);
+  expect(result.views[0].documents[0].offset).toBe(0);
+});
+it("persists theme settings and falls back from invalid preferences", () => {
+  const s = newSession();
+  s.appearance = { theme: "dracula", mode: "dark" };
+  expect(restoreSession(s).appearance).toEqual(s.appearance);
+  const bad = JSON.parse(JSON.stringify(s));
+  bad.appearance = { theme: "invalid", mode: null };
+  expect(restoreSession(bad).appearance).toEqual({
+    theme: "orange",
+    mode: "system",
+  });
+});

@@ -1,4 +1,5 @@
 (async () => {
+  let stage = "opening PDFs";
   const invoke = window.__TAURI_INTERNALS__.invoke;
   const wait = async (fn) => {
     for (let i = 0; i < 300; i++) {
@@ -6,14 +7,15 @@
       if (value) return value;
       await new Promise((r) => setTimeout(r, 100));
     }
-    throw new Error("Timed out waiting for native rendering");
+    throw new Error(`Timed out: ${stage}`);
   };
   try {
     await wait(
       () =>
-        document.querySelectorAll(".pdf-sheet > canvas").length === 2 &&
-        document.querySelectorAll(".textLayer").length === 2,
+        document.querySelectorAll(".pane:has(.continuous-pages)").length ===
+          2 && document.querySelectorAll(".textLayer").length >= 2,
     );
+    stage = "PDF text";
     await wait(() =>
       document
         .querySelector(".textLayer")
@@ -29,13 +31,36 @@
     if (ink < 500) throw new Error("Native PDF canvas is blank");
     const first = document.querySelector('[data-slot="0"]');
     const initialPage = Number(first.querySelector("input").value);
-    first.querySelector('[aria-label="Next page"]').click();
+    const scroller = first.querySelector(".page-scroll");
+    stage = "next page placeholder";
+    const next = await wait(() =>
+      first.querySelector(`[data-page="${initialPage + 1}"]`),
+    );
+    stage = "scroll page indicator";
+    scroller.scrollTop = Number.parseFloat(next.style.top) - 24 + 30;
     await wait(
       () => Number(first.querySelector("input").value) === initialPage + 1,
     );
+    stage = "saved page";
     await wait(async () => {
       const s = await invoke("load_session");
       return s?.views[0]?.documents[0]?.page === initialPage + 1;
+    });
+    stage = "appearance dialog";
+    document.querySelector('[aria-label="Appearance"]').click();
+    await wait(() => document.querySelector("dialog[open]"));
+    stage = "dark appearance";
+    [...document.querySelectorAll("dialog button")]
+      .find((b) => b.textContent.trim() === "Dark")
+      .click();
+    await wait(() => document.documentElement.dataset.mode === "dark");
+    stage = "saved appearance";
+    await wait(async () => {
+      const state = await invoke("load_session");
+      return (
+        state?.appearance?.mode === "dark" &&
+        state?.appearance?.theme === "orange"
+      );
     });
     let denied = false;
     try {
@@ -47,7 +72,9 @@
     await invoke("smoke_report", {
       report: JSON.stringify({
         passed: true,
-        canvases: 2,
+        panes: 2,
+        continuousScroll: true,
+        savedAppearance: "orange/dark",
         inkPixels: ink,
         initialPage,
         savedPage: initialPage + 1,
@@ -56,7 +83,14 @@
     });
   } catch (e) {
     await invoke("smoke_report", {
-      report: JSON.stringify({ passed: false, error: String(e) }),
+      report: JSON.stringify({
+        passed: false,
+        error: String(e),
+        mode: document.documentElement.dataset.mode,
+        panes: document.querySelectorAll(".continuous-pages").length,
+        canvas: document.querySelectorAll(".pdf-sheet canvas").length,
+        visibleText: document.body.innerText.slice(-1500),
+      }),
     });
   }
 })();

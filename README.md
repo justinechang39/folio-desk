@@ -22,12 +22,18 @@ The first release is ad-hoc signed, not Apple-notarized. macOS may require **Sys
 - Drop a document onto another workspace tab to move it there. The **•••** menu also lets you move it to an existing or new workspace, assign a pane, or remove it from the workspace.
 - Shrinking a layout keeps extra documents in the list. Click one to show it in the active pane.
 - Use **Focus this pane** to expand one PDF temporarily; press Escape to return.
-- Page, zoom, fit, and rotation belong to the document and follow it when it moves.
+- Scroll continuously through each PDF independently. Only nearby pages are rendered. Page, scroll position, zoom, fit, and rotation follow the document when it moves.
 - **Link pages** navigates visible PDFs to the same page number. Shorter documents stop at their final page. It does not synchronize scrolling or infer matching content.
 - Search finds pages containing selectable text. It does not perform OCR, highlight individual matches, or search text embedded only in scans.
 - Encrypted PDFs prompt for a password. Passwords are kept in memory only and must be entered again after a workspace is reopened.
 
-The app is a viewer: it does not edit, annotate, merge, convert, or print files. It displays one page at a time per pane, with selectable text, fit-to-page, fit-to-width, 25–400% manual zoom, rotation, and page navigation. Hyperlink and interactive form widgets are not active. PDF JavaScript is not executed.
+The app is a viewer: it does not edit, annotate, merge, convert, or print files. It displays continuous pages in each pane, with selectable text, fit-to-page, fit-to-width, 25–400% manual zoom, rotation, and optional page-number jumps. Hyperlink and interactive form widgets are not active. PDF JavaScript is not executed.
+
+## Appearance
+
+Use the **Appearance** palette button at the right of the toolbar. Choose **Orange** (default), **Nord**, **Dracula**, or **Solarized**, then select **System**, **Light**, or **Dark** mode. Settings are saved per user and survive restarting the app or closing every workspace. System mode follows macOS appearance changes. PDF pages keep their original colors.
+
+The Nord, Dracula, and Solarized options adapt their familiar palettes to the reading interface, including contrasting light variants. Palette references: [Nord](https://www.nordtheme.com/docs/colors-and-palettes/), [Dracula](https://draculatheme.com/spec), [Solarized](https://ethanschoonover.com/solarized/).
 
 ## Keyboard shortcuts
 
@@ -101,7 +107,7 @@ For a packaged native WebKit/IPC smoke test:
 python3 scripts/test-native.py
 ```
 
-This builds a test-only feature and uses a separate application identifier and data folder. It verifies PDF pixels, text, native file reads, saved page state, and rejection of non-PDF reads. The smoke-test hook is absent from normal release builds.
+This builds a test-only feature and uses a separate application identifier and data folder. It verifies PDF pixels, text, native file reads, saved page state, rejection of non-PDF reads, and saved theme settings. The smoke-test hook is absent from normal release builds.
 
 ## Releases
 

@@ -1,3 +1,8 @@
+import {
+  defaultAppearance,
+  restoreAppearance,
+  type Appearance,
+} from "./themes";
 export type Layout = "single" | "columns" | "rows" | "triple" | "grid";
 export const layouts: { id: Layout; label: string; count: number }[] = [
   { id: "single", label: "Single page", count: 1 },
@@ -15,6 +20,7 @@ export type Doc = {
   zoom: number;
   fit: Fit;
   rotation: number;
+  offset?: number;
 };
 export type View = {
   id: string;
@@ -30,6 +36,7 @@ export type Session = {
   active: string;
   views: View[];
   sidebar: boolean;
+  appearance: Appearance;
 };
 export const uid = () => crypto.randomUUID();
 export function newView(name = "Workspace 1"): View {
@@ -45,7 +52,13 @@ export function newView(name = "Workspace 1"): View {
 }
 export function newSession(): Session {
   const view = newView();
-  return { version: 1, active: view.id, views: [view], sidebar: true };
+  return {
+    version: 1,
+    active: view.id,
+    views: [view],
+    sidebar: true,
+    appearance: { ...defaultAppearance },
+  };
 }
 export const paneCount = (layout: Layout) =>
   layouts.find((l) => l.id === layout)!.count;
@@ -67,7 +80,15 @@ export function addDocuments(
   for (const file of files) {
     let doc = docs.find((d) => d.path === file.path);
     if (!doc) {
-      doc = { ...file, id: uid(), page: 1, zoom: 1, fit: "page", rotation: 0 };
+      doc = {
+        ...file,
+        id: uid(),
+        page: 1,
+        zoom: 1,
+        fit: "page",
+        rotation: 0,
+        offset: 0,
+      };
       docs.push(doc);
     }
     if (!added.includes(doc.id)) added.push(doc.id);
@@ -157,6 +178,7 @@ export function changePage(
       d.id === id || (view.linked && view.slots.includes(d.id))
         ? {
             ...d,
+            offset: 0,
             page: Math.max(
               1,
               Math.min(
@@ -207,6 +229,9 @@ export function restoreSession(value: unknown): Session {
       docIds.add(d.id);
       return {
         ...d,
+        offset: Number.isFinite(d.offset)
+          ? Math.max(0, Math.min(0.999, d.offset!))
+          : 0,
         page: Number.isFinite(d.page) ? Math.max(1, Math.floor(d.page)) : 1,
         zoom: Number.isFinite(d.zoom) ? Math.max(0.25, Math.min(4, d.zoom)) : 1,
         rotation: [0, 90, 180, 270].includes(d.rotation) ? d.rotation : 0,
@@ -239,5 +264,25 @@ export function restoreSession(value: unknown): Session {
     views,
     active: views.some((v) => v.id === raw.active) ? raw.active! : views[0].id,
     sidebar: raw.sidebar !== false,
+    appearance: restoreAppearance(raw.appearance),
+  };
+}
+
+export function scrollDocument(
+  view: View,
+  id: string,
+  page: number,
+  offset: number,
+  counts: Record<string, number>,
+): View {
+  return {
+    ...view,
+    focused: Math.max(0, view.slots.indexOf(id)),
+    documents: view.documents.map((d) => {
+      if (d.id === id) return { ...d, page, offset };
+      if (!view.linked || !view.slots.includes(d.id)) return d;
+      const target = Math.min(page, counts[d.id] ?? page);
+      return d.page === target ? d : { ...d, page: target, offset: 0 };
+    }),
   };
 }

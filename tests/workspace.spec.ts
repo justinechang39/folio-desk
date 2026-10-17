@@ -16,9 +16,11 @@ test("compares, searches, zooms, swaps, moves, and preserves documents across la
     ]);
   const first = page.getByRole("region", { name: "Pane 1", exact: true });
   const second = page.getByRole("region", { name: "Pane 2", exact: true });
-  await expect(first.locator("canvas")).toBeVisible();
-  await expect(second.locator("canvas")).toBeVisible();
-  await expect(first.locator(".textLayer")).toContainText("Question paper");
+  await expect(first.locator("canvas").first()).toBeVisible();
+  await expect(second.locator("canvas").first()).toBeVisible();
+  await expect(first.locator(".textLayer").first()).toContainText(
+    "Question paper",
+  );
   await first.getByRole("button", { name: "Next page", exact: true }).click();
   await expect(
     first.getByRole("textbox", { name: "Page in questions.pdf" }),
@@ -50,7 +52,7 @@ test("compares, searches, zooms, swaps, moves, and preserves documents across la
   ).toHaveCount(5);
   await first.getByRole("button", { name: "Find text", exact: true }).click();
   await page.getByRole("button", { name: "2 × 2", exact: true }).click();
-  await expect(page.locator(".pane canvas")).toHaveCount(3);
+  await expect(page.locator(".pane:has(.continuous-pages)")).toHaveCount(3);
   await page.getByRole("button", { name: "Single page", exact: true }).click();
   await expect(page.locator(".document-item")).toHaveCount(3);
   await page.getByRole("button", { name: "Side by side", exact: true }).click();
@@ -69,10 +71,10 @@ test("compares, searches, zooms, swaps, moves, and preserves documents across la
     .getByRole("button", { name: "Move document", exact: true })
     .click();
   await expect(page.getByRole("tab")).toHaveCount(2);
-  await expect(page.locator(".pane canvas")).toHaveCount(1);
+  await expect(page.locator(".pane:has(.continuous-pages)")).toHaveCount(1);
   await page.getByRole("tab", { name: "Workspace 1" }).click();
   await expect(page.locator(".document-item")).toHaveCount(2);
-  await expect(page.locator(".pane canvas")).toHaveCount(2);
+  await expect(page.locator(".pane:has(.continuous-pages)")).toHaveCount(2);
   await page
     .getByRole("button", { name: "Rename workspace", exact: true })
     .click();
@@ -107,7 +109,7 @@ test("rejects non-PDFs and handles corrupt PDFs without losing the workspace", a
   await expect(page.getByRole("alert")).toContainText("Only PDF files");
   await expect(page.getByText("Couldn’t open this PDF")).toBeVisible();
   await page.getByTestId("file-input").setInputFiles(fixture("questions.pdf"));
-  await expect(page.locator(".pdf-sheet > canvas")).toBeVisible();
+  await expect(page.locator(".pdf-sheet > canvas").first()).toBeVisible();
 });
 test("drags a document onto a pane and onto another workspace tab", async ({
   page,
@@ -116,7 +118,7 @@ test("drags a document onto a pane and onto another workspace tab", async ({
   await page
     .getByTestId("file-input")
     .setInputFiles([fixture("questions.pdf"), fixture("answers.pdf")]);
-  await expect(page.locator(".pdf-sheet > canvas")).toHaveCount(2);
+  await expect(page.locator(".pane:has(.continuous-pages)")).toHaveCount(2);
   await page
     .getByRole("button", { name: "Move questions.pdf", exact: true })
     .dragTo(page.locator('[data-slot="1"]'));
@@ -147,7 +149,7 @@ test("unlocks encrypted PDFs and never saves the password", async ({
     .getByRole("textbox", { name: "PDF password" })
     .fill("test-password");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
-  await expect(page.locator(".pdf-sheet > canvas")).toBeVisible();
+  await expect(page.locator(".pdf-sheet > canvas").first()).toBeVisible();
   expect(
     await page.evaluate(() => localStorage.getItem("folio-session")),
   ).not.toContain("test-password");
@@ -197,6 +199,7 @@ test("renders every layout at the minimum window size and rotates the page", asy
     .poll(async () =>
       pane
         .locator(".pdf-sheet > canvas")
+        .first()
         .evaluate((c: HTMLCanvasElement) => c.width > c.height),
     )
     .toBe(true);
@@ -206,4 +209,154 @@ test("renders every layout at the minimum window size and rotates the page", asy
   await expect(page.locator(".pane")).toHaveCount(1);
   await page.keyboard.press("Escape");
   await expect(page.locator(".pane")).toHaveCount(2);
+});
+
+test("saves theme and mode, follows system appearance, and keeps settings after closing tabs", async ({
+  page,
+}, info) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "orange");
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Orange", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Dark", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+  await page.screenshot({
+    path: `test-results/${info.project.name}-appearance-dark.png`,
+    animations: "disabled",
+  });
+  for (const theme of ["Nord", "Dracula", "Solarized", "Orange"]) {
+    await page.getByRole("button", { name: theme, exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      theme.toLowerCase(),
+    );
+  }
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page
+    .getByRole("button", { name: "Close Workspace 1", exact: true })
+    .click();
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("button", { name: "System", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+  await page.getByRole("button", { name: "Light", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "light");
+});
+
+test("scrolls PDFs independently, preserves scroll across tab changes, and links without bouncing", async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page
+    .getByTestId("file-input")
+    .setInputFiles([fixture("questions.pdf"), fixture("answers.pdf")]);
+  const first = page.locator('[data-slot="0"]'),
+    second = page.locator('[data-slot="1"]');
+  await expect(first.locator(".textLayer").first()).toContainText(
+    "Question paper",
+  );
+  await expect(second.locator(".textLayer").first()).toContainText(
+    "Worked answers",
+  );
+  await first.locator(".page-scroll").hover();
+  await page.mouse.wheel(0, 900);
+  await expect(
+    first.getByRole("textbox", { name: "Page in questions.pdf" }),
+  ).toHaveValue("2");
+  await expect(
+    second.getByRole("textbox", { name: "Page in answers.pdf" }),
+  ).toHaveValue("1");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("folio-session")!).views[0]
+            .documents[0].offset,
+      ),
+    )
+    .toBeGreaterThan(0.1);
+  const position = await first
+    .locator(".page-scroll")
+    .evaluate((el) => el.scrollTop);
+  await page
+    .getByRole("button", { name: "New workspace (⌘T)", exact: true })
+    .click();
+  await page.getByRole("tab", { name: "Workspace 1" }).click();
+  await expect
+    .poll(() => first.locator(".page-scroll").evaluate((el) => el.scrollTop))
+    .toBeCloseTo(position, 0);
+  await page.getByRole("button", { name: "Link pages", exact: true }).click();
+  await first.locator(".page-scroll").hover();
+  await page.mouse.wheel(0, 1300);
+  await expect(
+    first.getByRole("textbox", { name: "Page in questions.pdf" }),
+  ).toHaveValue("4");
+  await expect(
+    second.getByRole("textbox", { name: "Page in answers.pdf" }),
+  ).toHaveValue("3");
+  // A programmatic scroll in the shorter PDF must not pull the source back to page 3.
+  await expect
+    .poll(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      return first
+        .getByRole("textbox", { name: "Page in questions.pdf" })
+        .inputValue();
+    })
+    .toBe("4");
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("button", { name: "Dark", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.screenshot({
+    path: `test-results/${info.project.name}-scroll-dark.png`,
+    animations: "disabled",
+  });
+  expect(errors).toEqual([]);
+});
+
+test("bounds rendered pages in a long mixed-size PDF and preserves its anchor during zoom", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("file-input").setInputFiles(fixture("long.pdf"));
+  const pane = page.locator('[data-slot="0"]');
+  await expect(pane.locator(".textLayer").first()).toContainText(
+    "Long document",
+  );
+  const input = pane.getByRole("textbox", { name: "Page in long.pdf" });
+  await input.fill("60");
+  await input.press("Enter");
+  await expect(pane.locator('[data-page="60"] canvas')).toBeVisible();
+  expect(await pane.locator("canvas").count()).toBeLessThanOrEqual(6);
+  await pane.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect(input).toHaveValue("60");
+  await expect
+    .poll(() => pane.locator(".page-scroll").evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(10000);
+  expect(await pane.locator("canvas").count()).toBeLessThanOrEqual(6);
+  // The actual PDF pages stay white in every application palette/mode.
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("button", { name: "Dark", exact: true }).click();
+  for (const theme of ["Orange", "Nord", "Dracula", "Solarized"]) {
+    await page.getByRole("button", { name: theme, exact: true }).click();
+    await expect(pane.locator(".pdf-sheet").first()).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+    const colors = await page
+      .getByRole("button", { name: theme, exact: true })
+      .evaluate((el) => ({
+        background: getComputedStyle(el).backgroundColor,
+        text: getComputedStyle(el).color,
+      }));
+    expect(colors.background).not.toBe(colors.text);
+  }
 });
