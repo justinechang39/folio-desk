@@ -1,22 +1,11 @@
-# Folio Desk design
+# Native Folio Desk
 
-A reading desk for comparing question papers, solutions, and reference documents. Each tab is a workspace. A narrow document shelf lists everything in the workspace; the right side is reserved for the pages themselves.
+PDFKit is the only rendering and interaction engine. AppKit owns tabs, the document list, native controls, and split panes. Rust validates files and writes session metadata atomically. There is no webview or JavaScript gesture path.
 
-Palette: ink #24313c, slate #64717f, desk #edf0f3, paper #ffffff, focus #176b86, selected #e1f1f7. System SF typography keeps controls familiar on macOS; document typography belongs to the PDF. Restrained 12–14px controls, 32px minimum hit targets, and a 40px workspace tab strip leave most of the window for paper. A single blue rule identifies the active pane.
+Native PDF views remain alive when their documents stay visible through a layout change. Hidden documents retain metadata, while their views and raster caches can be released. Pinch and scroll do not rebuild panes, tabs, or the document list. Status labels are coalesced, and session capture waits until interaction settles. Resize-to-fit work runs only when the outer pane size actually changes.
 
-    [ Workspace tabs                                       + ]
-    [ Add PDFs     Layout                         Link pages ]
-    [ Documents | title + page tools | title + page tools     ]
-    [           |                   |                        ]
-    [           |      PDF          |        PDF             ]
-    [           |                   |                        ]
+The interface keeps the user's documents prominent: tabs across the top, a compact layout/appearance toolbar, a collapsible document list, and one to four PDF panes. Dividers are resizable. Layout changes begin with equal panes, while documents not currently visible stay in the list. Drag rows to panes to assign/swap them, or to workspace tabs to move them. Context menus provide equivalent move commands.
 
-The visual emphasis is the arrangement of real sheets. No dashboard cards, promotional copy, or decorative gradients. Layout changes preserve documents in the shelf. Each document retains its page, zoom, fit, and rotation when moved. Drag to swap panes; move menus support keyboard users and transfers to other workspaces. Linked page turns are explicit and off by default. Session metadata stays local; original PDFs are never modified.
+Orange is the default accent. Nord, Dracula, and Solarized supply alternative accents and reading backgrounds; light, dark, and system mode remain separate choices. PDF paper/ink colors are never altered.
 
-Review against brief: a fixed symmetric two-pane viewer would limit reuse, so layouts include one, two columns, two rows, three columns, and four panes. Extra documents remain available instead of disappearing when the layout shrinks. A vertical shelf adds navigation without crowding the page controls. Mobile styling is not the target; the native window has an 860px minimum width, with a collapsible shelf for smaller screens.
-
-## Appearance and continuous reading
-
-Retain the existing desk structure and system type. Add one Appearance control at the right of the toolbar. The picker separates palette (Orange, Nord, Dracula, Solarized) from mode (System, Light, Dark), with compact palette previews and a visible selected state. Orange is the default: burnt orange #b84b08 on pale neutral surfaces in light mode, warm orange #ffab70 on charcoal #202124 in dark mode. Theme the app chrome using semantic tokens; leave PDF paper and ink unchanged. This keeps the reading material accurate while giving controls a consistent selected/focus color.
-
-Continuous pages stack vertically in each pane with a quiet gap. Render only visible pages and their immediate neighbors, preserving page and fractional reading position on layout/zoom changes. Existing page controls remain useful for precise jumps. Independent scrolling is the default; explicit Link pages continues to synchronize page numbers without feedback loops.
+The version-1 session model remains compatible with existing metadata and adds optional native page coordinates. The original pre-migration session is preserved. Every document operation is read-only with respect to source PDF files.

@@ -1,0 +1,24 @@
+[package]
+name = "folio-desk"
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+description = "Native PDF workspaces for macOS"
+build = "rust/build.rs"
+
+[lib]
+path = "rust/lib.rs"
+
+[[bin]]
+name = "folio-desk"
+path = "rust/main.rs"
+required-features = ["native-ui"]
+
+[features]
+native-ui = []
+
+[dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

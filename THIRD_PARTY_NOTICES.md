@@ -2,13 +2,10 @@
 
 Folio Desk is MIT licensed. Its dependencies retain their own licenses.
 
-- **Tauri**, the native Rust application framework: MIT OR Apache-2.0. Copyright Tauri Programme within The Commons Conservancy and contributors. https://github.com/tauri-apps/tauri
-- **Mozilla PDF.js**, including its worker, standard fonts, CMaps, WASM decoders, and adapted text-layer styles: Apache-2.0, with additional notices in bundled asset directories. Copyright Mozilla Foundation and contributors. https://github.com/mozilla/pdf.js
-- **React / React DOM**: MIT. Copyright Meta Platforms, Inc. and affiliates. https://github.com/facebook/react
-- **Lucide**: ISC, with portions derived from Feather under MIT. https://github.com/lucide-icons/lucide
-- **rfd**, native file dialogs: MIT. https://github.com/PolyMeilex/rfd
-- **Serde / serde_json**: MIT OR Apache-2.0. https://github.com/serde-rs
+- Rust JSON handling uses **serde_json**, **serde_core**, and their dependencies. Serde and serde_json are MIT OR Apache-2.0. https://github.com/serde-rs
+- **AppKit**, **PDFKit**, and the Swift runtime are system components provided by macOS. They are linked from the operating system and are not copied into Folio's bundle.
+- The icon and synthetic test PDFs were created for this project. No personal PDFs are included.
 
-The generated [third-party license collection](licenses/ThirdPartyLicenses.txt) contains license texts from the locked JavaScript production dependencies and Rust dependency graph. It is included in the app bundle. Rebuild it with `python3 scripts/collect-licenses.py` after dependency updates. Asset-specific notices are also retained with PDF.js font and decoder resources.
+The generated [license collection](licenses/ThirdPartyLicenses.txt) includes the locked Rust dependency graph, including local test dependencies. It is included in the app. Regenerate it with `python3 scripts/collect-licenses.py` after changing dependencies.
 
-The app icon and test documents were created for this project. No personal documents are included.
+Folio 0.3 no longer bundles Tauri, React, PDF.js, Lucide, or a browser-based renderer. Historical releases and their notices remain available in Git history.

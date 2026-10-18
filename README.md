@@ -1,125 +1,112 @@
 # Folio Desk
 
-A local PDF workspace for macOS. Compare question papers and answers, keep references beside your reading, and organize related PDFs into tabs.
+A native macOS workspace for reading PDFs side by side. Compare question papers and answers, keep references alongside your reading, and organize related documents into tabs.
 
-![Two PDFs in a Folio Desk workspace](docs/workspace.png)
+![Native Folio Desk workspace](docs/workspace.png)
 
-## Download
+Folio 0.3 uses **Apple PDFKit exclusively** for PDF display, continuous scrolling, pinch zoom, selection, and search. Rust handles PDF validation and durable session storage; Swift/AppKit provides the native interface. There is no webview, PDF.js renderer, Node runtime, LibreOffice dependency, or renderer switch.
 
-[Download the latest Mac app](https://github.com/justinechang39/folio-desk/releases/latest).
+## Install
 
-1. Download **Folio-Desk-macOS-arm64.zip** (Apple silicon, macOS 13.3 or newer).
-2. Unzip it and move **Folio Desk.app** into **Applications**.
-3. Open the app and choose **Add PDFs**, or drop PDFs onto a pane.
+[Download the latest release](https://github.com/justinechang39/folio-desk/releases/latest), unzip it, and move **Folio Desk.app** into **Applications**. Quit an older Folio before replacing it. Requires macOS 13.3 or newer. Published builds are Apple silicon; an Intel Mac can build its own copy using the same local script.
 
-The first release is ad-hoc signed, not Apple-notarized. macOS may require **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. Intel builds can be built from source on an Intel Mac; the published binary is Apple silicon only. Automatic updates are not included in this first release.
+The app is ad-hoc signed, not notarized by Apple. For a downloaded build, macOS may require **System Settings → Privacy & Security → Open Anyway** after the first launch attempt. Automatic updates are not included.
 
-## Workspaces
+## Reading and workspaces
 
-- Each tab holds a separate group of PDFs. Double-click a tab, or use the pencil in the document list, to rename it.
-- Choose one pane, side by side, stacked, three columns, or a 2 × 2 grid.
-- Drag a document’s grip or its entry in the document list onto a pane to show it there. If both panes are occupied, their documents swap.
-- Drop a document onto another workspace tab to move it there. The **•••** menu also lets you move it to an existing or new workspace, assign a pane, or remove it from the workspace.
-- Shrinking a layout keeps extra documents in the list. Click one to show it in the active pane.
-- Use **Focus this pane** to expand one PDF temporarily; press Escape to return.
-- Pinch with two fingers over a PDF to zoom that pane (25–400%). Pages stay visible throughout the gesture, with the point under your pointer anchored; sharper rendering replaces the preview after release. Two-finger scrolling still scrolls normally. Command/Ctrl + scroll also zooms.
-- Scroll continuously through each PDF independently. Only nearby pages are rendered. Page, scroll position, zoom, fit, and rotation follow the document when it moves.
-- **Link pages** navigates visible PDFs to the same page number. Shorter documents stop at their final page. It does not synchronize scrolling or infer matching content.
-- Search finds pages containing selectable text. It does not perform OCR, highlight individual matches, or search text embedded only in scans.
-- Encrypted PDFs prompt for a password. Passwords are kept in memory only and must be entered again after a workspace is reopened.
+- Each tab is a workspace. Use **+**, **Rename**, and **×** to manage tabs.
+- Choose **Single**, **Side by side**, **Stacked**, **Three columns**, or **2 × 2**. Drag dividers to resize panes. Layout changes retain extra PDFs in the document list.
+- **Add PDFs…**, a pane's **Open…** button, Finder's **Open With → Folio Desk**, or dropping files into a pane opens PDFs. Only PDFs up to 256 MB each are accepted.
+- Click a document to display it in the active pane. Drag its row to a pane to swap/assign it, or to another tab to move it. Right-click a row for pane assignments, moving to another/new workspace, showing it in Finder, or removing it. Drag rows within the document list to reorder them.
+- Scroll and pinch independently in each pane. Use **−/+**, **Width**, **Page**, the page-number field, and rotation controls. Zoom spans 10–800%.
+- **Focus** expands the active pane; press Escape or **Focus** again to restore the layout. Clicking, pinching, or scrolling in a pane makes it active for keyboard controls.
+- **Link pages** synchronizes page numbers across visible PDFs. Shorter documents stop at their last page; this does not infer corresponding content or synchronize exact scroll offsets.
+- **Find** searches selectable text asynchronously, highlights matches, and provides previous/next results. It does not perform OCR on scanned pages.
+- Locked PDFs show an **Unlock PDF** button. Passwords are used only in memory; switching away from a workspace can require unlocking it again.
 
-The app is a viewer: it does not edit, annotate, merge, convert, or print files. It displays continuous pages in each pane, with selectable text, fit-to-page, fit-to-width, 25–400% manual zoom, rotation, and optional page-number jumps. Hyperlink and interactive form widgets are not active. PDF JavaScript is not executed.
+Original PDFs are never saved over. Rotation and reading state are workspace metadata. The app is a viewer, not a PDF editor or printing application.
 
 ## Appearance
 
-Use the **Appearance** palette button at the right of the toolbar. Choose **Orange** (default), **Nord**, **Dracula**, or **Solarized**, then select **System**, **Light**, or **Dark** mode. Settings are saved per user and survive restarting the app or closing every workspace. System mode follows macOS appearance changes. PDF pages keep their original colors.
-
-The Nord, Dracula, and Solarized options adapt their familiar palettes to the reading interface, including contrasting light variants. Palette references: [Nord](https://www.nordtheme.com/docs/colors-and-palettes/), [Dracula](https://draculatheme.com/spec), [Solarized](https://ethanschoonover.com/solarized/).
+Choose **Orange** (default), **Nord**, **Dracula**, or **Solarized**, independently of **System**, **Light**, or **Dark** mode. Settings are saved. Native macOS controls retain their system appearance; palette colors apply to document backgrounds and accents. PDF page colors remain unchanged.
 
 ## Keyboard shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| ⌘O | Add PDFs |
+| ⌘O | Add PDFs to the active pane |
 | ⌘T | New workspace |
-| ⌘W | Close workspace (asks before closing a populated workspace) |
+| ⌘W | Close workspace, with confirmation if populated |
 | ⌘1–9 | Switch workspace |
-| ← / → or Page Up / Page Down | Previous / next page in the active pane |
-| ⌘+ / ⌘− | Zoom active PDF |
-| ⌘0 | Fit active PDF to pane |
-| Escape | Restore split layout |
+| ⌘+ / ⌘− | Zoom active pane |
+| ⌘0 | Fit whole page |
+| ⌘F | Show/hide search in active pane |
+| Escape | Restore layout from focused pane |
+| ⌘Q | Save and quit |
 
-## Local storage and privacy
+## Session migration and privacy
 
-Rust handles native dialogs, PDF validation and reading, and atomic session saves. Tauri uses macOS’s system WebKit; React provides the interface, and the bundled Mozilla PDF.js parses PDFs in a worker and renders pages into browser canvases. No Node runtime, external PDF app, cloud service, telemetry, or online fonts are needed at runtime.
+Everything runs locally. No PDF uploads, telemetry, cloud services, or online fonts. PDFs are opened from their original locations; they are not copied into Folio's data folder.
 
-Only PDF files are accepted (extension and PDF header checked in Rust), up to **256 MB per file**. Every file is read-only. Originals are never modified. A PDF must first be imported before the renderer can read it through the native bridge.
+Existing Folio 0.2 workspaces migrate automatically, including tabs, document paths, layouts, page, zoom, rotation, sidebar, and theme settings. The old fractional scroll offset is translated to a native page position on first open. Subsequent saves retain a native page coordinate. Missing or cloud-only PDFs stay in the workspace with a retry control instead of being removed.
 
-Workspace metadata—including local paths, names, layout, page, zoom, and rotation—is saved to:
+Session location:
 
 ```text
 ~/Library/Application Support/io.github.justinechang39.foliodesk/session.json
 ```
 
-The preceding save is retained as `session.previous.json`. Starting fresh after a restore error also retains a separate timestamped recovery copy. PDFs themselves are not copied into this folder. Moving, deleting, or disconnecting a source file can prevent it from reopening; add it from its new location and remove the old entry. Closing the app saves the workspace before the window exits.
+Rust writes sessions atomically, retains the preceding save as `session.previous.json`, and preserves the session before the first native save as `session.before-native.json`. A damaged session is preserved and prompts before starting fresh. Nothing is written to the PDFs themselves.
+
+The separate **Folio Native Preview** experiment is retired. It had no saved workspace, so removing it does not remove documents or settings.
 
 ## Build locally
 
-Requirements: macOS, Xcode Command Line Tools (`xcode-select --install`), Rust stable (tested with 1.98.0), and Node.js 22.13+ (tested with 22.15.0). The initial dependency install needs internet access; reading PDFs does not.
+Requirements: macOS, Xcode Command Line Tools (`xcode-select --install`), Rust stable, and Python 3. Tested with Swift 6.2 and Rust 1.98. The first Cargo dependency fetch needs internet access; normal use is offline.
 
 ```sh
 git clone https://github.com/justinechang39/folio-desk.git
 cd folio-desk
-npm ci
-npm run tauri -- dev
-```
-
-Build the app for the current machine:
-
-```sh
 ./scripts/package.sh
+open 'dist-release/Folio Desk.app'
 ```
 
-Output:
+The script compiles the native Swift bridge and Rust executable, collects licenses, ad-hoc signs and verifies the app, and produces:
 
 ```text
-src-tauri/target/release/bundle/macos/Folio Desk.app
+dist-release/Folio Desk.app
+dist-release/Folio-Desk-macOS-arm64.zip
+dist-release/SHA256SUMS
 ```
 
-Quit an existing Folio Desk before replacing its application bundle, then copy the built `.app` into `/Applications`. Workspace settings live separately and are preserved.
-
-`npm run dev` also offers a browser-only UI preview. This preview uses a file input and local storage; unlike the desktop app, it cannot reopen file contents after a reload. Use `tauri dev` for native behavior.
-
-## Tests
+On Intel, the ZIP suffix is `x86_64`. To install, quit Folio and copy the app:
 
 ```sh
-npm test
-cargo test --manifest-path src-tauri/Cargo.toml
-npx playwright install chromium webkit
-npm run test:e2e
-npm audit
+python3 scripts/install-local.py
 ```
 
-Tests use synthetic PDFs, never personal documents or printers. They cover layout preservation, swaps and transfers, linked pagination, persistence validation, file validation, atomic save backups, rendering, search, zoom, encrypted PDFs, and drag-and-drop in WebKit and Chromium. Fixtures are checked in; `scripts/test-fixtures.py` recreates the unencrypted fixtures. The encrypted fixture uses the test password `test-password`.
+The installer requests a normal quit, retains a ZIP of the previous app and a session snapshot, replaces the complete bundle, and opens Folio. Add `--remove-preview` to uninstall the retired Folio Native Preview at the same time. Backups are ZIP files so they do not add Finder Open With entries.
 
-Rendering is queued across panes, stale refinements are cancelled when zooming resumes, and retired canvas buffers are explicitly released. Stress checks cover repeated zooms, bitmap retirement, and reuse of selectable text layers.
-
-For a packaged native WebKit/IPC smoke test:
+## Local tests
 
 ```sh
+cargo test --lib
 python3 scripts/test-native.py
 ```
 
-This builds a test-only feature and uses a separate application identifier and data folder. It verifies PDF pixels, text, native file reads, saved page state, rejection of non-PDF reads, and saved theme settings. The smoke-test hook is absent from normal release builds.
+The native suite uses synthetic PDFs and an isolated session directory. It checks migration, all five layouts, document swaps and moves, theme changes without PDF reloads, native search and rotation, saving and actual relaunch restoration, invalid inputs, and a 1,800-step zoom/scroll workload. Original PDFs and the real user session are never modified by these tests. Use `--quick` to skip the minute-long stress run or `--skip-build` to test an existing build.
 
-## Native viewer experiment
+Optional local stress testing with two personal PDFs (never uploaded or committed):
 
-A separate two-pane PDFKit prototype is available for comparing native macOS scrolling and pinch zoom with the existing viewer. It does not replace Folio Desk or change its saved workspaces. See [build, installation, and local test instructions](native-preview/README.md).
+```sh
+python3 scripts/test-native.py --skip-build \
+  --pdf '/absolute/path/first.pdf' --pdf '/absolute/path/second.pdf'
+```
 
-## Releases
+Reports, memory samples, and test-window screenshots (only if capture permission already exists) go into ignored `work/native-production-test/`. The benchmark suppresses App Nap only for the workload. It measures main-run-loop timer gaps, not display frame times or physical trackpad feel. The regular app retains normal macOS power behavior.
 
-Builds run locally. GitHub Actions is disabled and no workflows are included. `scripts/package.sh` builds, verifies the local signature, and creates a ZIP and SHA256 checksum under `dist-release/`. Upload those artifacts to a GitHub Release after testing.
+## Releases and license
 
-## License
+Builds run locally. **GitHub Actions remains disabled**; no workflows are included. Upload the locally tested ZIP and checksum to GitHub Releases.
 
-MIT for Folio Desk. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for bundled third-party software, including PDF.js under Apache-2.0. Lockfiles pin the tested dependency versions.
+Folio Desk is MIT licensed. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md). Cargo.lock pins Rust dependency versions.

@@ -10,13 +10,7 @@ def add(name,version,license,directory,explicit=None):
     found += [p for p in directory.iterdir() if p.is_file() and p.name.upper().startswith(('LICENSE','LICENCE','COPYING','NOTICE','COPYRIGHT'))]
     for path in sorted(set(found)):
         output.append(f'\n--- {path.name} ---\n'+path.read_text(errors='replace')+'\n')
-paths=subprocess.check_output(['npm','ls','--omit=dev','--parseable'],cwd=root,text=True).splitlines()
-for directory in paths:
-    path=pathlib.Path(directory)
-    if path==root:continue
-    p=json.loads((path/'package.json').read_text())
-    add(p['name'],p['version'],p.get('license','See upstream license'),path)
-metadata=json.loads(subprocess.check_output(['cargo','metadata','--locked','--format-version','1','--filter-platform','aarch64-apple-darwin','--manifest-path','src-tauri/Cargo.toml'],cwd=root))
+metadata=json.loads(subprocess.check_output(['cargo','metadata','--locked','--format-version','1','--filter-platform','aarch64-apple-darwin'],cwd=root))
 for p in sorted(metadata['packages'],key=lambda p:(p['name'],p['version'])):
     if p['name']=='folio-desk':continue
     add(p['name'],p['version'],p.get('license','See upstream license'),pathlib.Path(p['manifest_path']).parent,p.get('license_file'))

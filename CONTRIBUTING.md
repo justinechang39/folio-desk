@@ -1,7 +1,7 @@
 # Contributing
 
-Use the local build and test commands in README.md. Keep native file access in Rust, preserve document positions across layout changes, and never write to source PDFs. Use synthetic fixtures for tests; do not commit personal documents or session data.
+Use the local build and test commands in README.md. Keep PDF validation and durable session storage in Rust; native PDF interaction belongs to PDFKit. Preserve positions across layout/tab changes and never save over source PDFs. Do not add a webview renderer or perform per-gesture workspace rebuilds.
 
-Changes to session structure need explicit versioning and migration. Changes to file handling should include Rust validation tests. Changes to document movement should include model tests and a browser interaction test.
+Use synthetic fixtures and isolated test sessions. Never commit personal PDFs, session files, performance reports, or screenshots of private documents. Session changes need explicit compatibility handling and migration tests. File handling changes need Rust tests; document movement and viewer changes need native integration tests.
 
-No GitHub Actions workflows are enabled. Run checks locally before submitting changes.
+GitHub Actions is disabled. Build and run checks locally before submitting changes.

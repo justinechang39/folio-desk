@@ -1,12 +1,6 @@
-node_modules/
-dist/
-src-tauri/target/
+/target/
+/dist-release/
+/work/
 .DS_Store
-work/
-test-results/
-playwright-report/
 *.log
-public/pdfjs/
-dist-release/
-*.tsbuildinfo
-src-tauri/gen/
+__pycache__/
