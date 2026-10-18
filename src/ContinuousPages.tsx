@@ -13,6 +13,7 @@ import {
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { LoaderCircle } from "lucide-react";
 import type { Doc } from "./model";
+import { pdfRenderQueue, releaseCanvas } from "./renderQueue";
 import { usePdfZoom, type ZoomPoint } from "./usePdfZoom";
 
 type Metric = { width: number; height: number; rotation: number };
@@ -104,11 +105,13 @@ function PageCanvas({
   box,
   pixelBudget,
   zooming,
+  visible,
 }: {
   pdf: PDFDocumentProxy;
   box: PageBox;
   pixelBudget: number;
   zooming: boolean;
+  visible: boolean;
 }) {
   // Existing pages keep their render recipe while pinching. Newly exposed
   // pages start at the live scale rather than allocating oversized bitmaps.
@@ -120,6 +123,9 @@ function PageCanvas({
   const activeRender = useRef<ReturnType<PDFPageProxy["render"]> | null>(null);
   useEffect(
     () => () => {
+      releaseCanvas(rendered.current?.canvas);
+      rendered.current?.layer.replaceChildren();
+      rendered.current = null;
       const page = loadedPage.current,
         render = activeRender.current;
       if (render)
@@ -132,9 +138,12 @@ function PageCanvas({
     [error, setError] = useState("");
   const displayBox = useRef(box);
   displayBox.current = box;
-  const rendered = useRef<{ width: number; layer: HTMLDivElement } | null>(
-    null,
-  );
+  const rendered = useRef<{
+    width: number;
+    rotation: number;
+    layer: HTMLDivElement;
+    canvas: HTMLCanvasElement;
+  } | null>(null);
   function alignText() {
     const current = rendered.current;
     if (current)
@@ -151,75 +160,116 @@ function PageCanvas({
   const rasterHeight = Math.max(1, Math.floor(renderBox.height * ratio));
   useEffect(() => {
     const target = sheet.current!;
-    // Keep the last complete bitmap until its replacement is fully rendered.
-    setBusy(!target.querySelector("canvas"));
+    // Pinching cancels unfinished refinement, but keeps the displayed surface.
+    if (zooming && rendered.current) return;
+    setBusy(!rendered.current);
     setError("");
-    let cancelled = false,
-      render: ReturnType<PDFPageProxy["render"]> | undefined,
-      text: TextLayer | undefined,
-      page: PDFPageProxy | undefined;
-    pdf
-      .getPage(box.number)
-      .then(async (result) => {
-        page = result;
-        if (cancelled) return;
-        loadedPage.current = page;
-        const viewport = page.getViewport({
-          scale: renderBox.scale,
-          rotation: renderBox.rotation,
-        });
-        const canvas = document.createElement("canvas");
-        canvas.width = rasterWidth;
-        canvas.height = rasterHeight;
-        canvas.style.width = "100%";
-        canvas.style.height = "100%";
-        render = page.render({
-          canvas,
-          viewport,
-          transform: [
-            rasterWidth / viewport.width,
-            0,
-            0,
-            rasterHeight / viewport.height,
-            0,
-            0,
-          ],
-        });
-        activeRender.current = render;
-        await render.promise;
-        if (cancelled) return;
-        const layer = document.createElement("div");
-        layer.className = "textLayer";
-        layer.style.width = `${viewport.width}px`;
-        layer.style.height = `${viewport.height}px`;
-        layer.style.setProperty(
-          "--total-scale-factor",
-          String(renderBox.scale),
+    const controller = new AbortController();
+    const { signal } = controller;
+    let render: ReturnType<PDFPageProxy["render"]> | undefined;
+    let text: TextLayer | undefined;
+    signal.addEventListener(
+      "abort",
+      () => {
+        render?.cancel();
+        text?.cancel();
+      },
+      { once: true },
+    );
+    const timer = setTimeout(
+      () => {
+        pdfRenderQueue.enqueue(
+          async () => {
+            let canvas: HTMLCanvasElement | undefined;
+            let published = false;
+            try {
+              const page = await pdf.getPage(box.number);
+              if (signal.aborted) return;
+              loadedPage.current = page;
+              const viewport = page.getViewport({
+                scale: renderBox.scale,
+                rotation: renderBox.rotation,
+              });
+              canvas = document.createElement("canvas");
+              canvas.dataset.pdfRaster = "true";
+              canvas.width = rasterWidth;
+              canvas.height = rasterHeight;
+              canvas.style.width = "100%";
+              canvas.style.height = "100%";
+              render = page.render({
+                canvas,
+                viewport,
+                transform: [
+                  rasterWidth / viewport.width,
+                  0,
+                  0,
+                  rasterHeight / viewport.height,
+                  0,
+                  0,
+                ],
+              });
+              activeRender.current = render;
+              await render.promise;
+              if (signal.aborted) return;
+              const old = rendered.current;
+              // Text geometry scales independently; rebuilding thousands of text
+              // spans on every zoom is unnecessary. Rotation requires a new layer.
+              let layer = old?.layer,
+                textWidth = old?.width ?? viewport.width;
+              if (!old || old.rotation !== renderBox.rotation) {
+                layer = document.createElement("div");
+                layer.className = "textLayer";
+                layer.style.width = `${viewport.width}px`;
+                layer.style.height = `${viewport.height}px`;
+                layer.style.setProperty(
+                  "--total-scale-factor",
+                  String(renderBox.scale),
+                );
+                text = new TextLayer({
+                  textContentSource: page.streamTextContent(),
+                  container: layer,
+                  viewport,
+                });
+                await text.render();
+                textWidth = viewport.width;
+              }
+              if (signal.aborted) return;
+              rendered.current = {
+                width: textWidth,
+                rotation: renderBox.rotation,
+                layer: layer!,
+                canvas,
+              };
+              alignText();
+              target.replaceChildren(canvas, layer!);
+              published = true;
+              // Free the previous bitmap now, rather than waiting for JS garbage collection.
+              releaseCanvas(old?.canvas);
+              if (old && old.layer !== layer) old.layer.replaceChildren();
+              target.dataset.renderScale = String(renderBox.scale);
+              setBusy(false);
+            } catch (error) {
+              if (!signal.aborted) {
+                setError(
+                  error instanceof Error ? error.message : String(error),
+                );
+                setBusy(false);
+              }
+            } finally {
+              if (!published) releaseCanvas(canvas);
+              if (activeRender.current === render) activeRender.current = null;
+            }
+          },
+          signal,
+          visible ? 0 : 1,
         );
-        text = new TextLayer({
-          textContentSource: page.streamTextContent(),
-          container: layer,
-          viewport,
-        });
-        await text.render();
-        if (!cancelled) {
-          rendered.current = { width: viewport.width, layer };
-          alignText();
-          target.replaceChildren(canvas, layer);
-          target.dataset.renderScale = String(renderBox.scale);
-          setBusy(false);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled && e?.name !== "RenderingCancelledException") {
-          setError(String(e.message ?? e));
-          setBusy(false);
-        }
-      });
+        // Coalesce repeated pinch endings / zoom button clicks. First paint stays immediate.
+      },
+      rendered.current ? 180 : 0,
+    );
     return () => {
-      cancelled = true;
-      render?.cancel();
-      text?.cancel();
+      clearTimeout(timer);
+      controller.abort();
     };
   }, [
     pdf,
@@ -228,7 +278,9 @@ function PageCanvas({
     renderBox.rotation,
     rasterWidth,
     rasterHeight,
+    zooming,
   ]);
+
   return (
     <div
       className="page-frame"
@@ -511,6 +563,10 @@ export default function ContinuousPages({
           pdf={pdf}
           box={box}
           zooming={previewZoom !== null}
+          visible={
+            box.top + box.height >= visibleTop &&
+            box.top <= visibleTop + size.height
+          }
           pixelBudget={Math.floor(16_000_000 / visible.length)}
         />
       ))}

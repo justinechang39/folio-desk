@@ -102,6 +102,8 @@ npm audit
 
 Tests use synthetic PDFs, never personal documents or printers. They cover layout preservation, swaps and transfers, linked pagination, persistence validation, file validation, atomic save backups, rendering, search, zoom, encrypted PDFs, and drag-and-drop in WebKit and Chromium. Fixtures are checked in; `scripts/test-fixtures.py` recreates the unencrypted fixtures. The encrypted fixture uses the test password `test-password`.
 
+Rendering is queued across panes, stale refinements are cancelled when zooming resumes, and retired canvas buffers are explicitly released. Stress checks cover repeated zooms, bitmap retirement, and reuse of selectable text layers.
+
 For a packaged native WebKit/IPC smoke test:
 
 ```sh

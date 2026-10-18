@@ -99,6 +99,30 @@
       async () =>
         (await invoke("load_session"))?.views[0]?.documents[0]?.zoom === 1.5,
     );
+    stage = "repeated native zoom and bitmap retirement";
+    const retired = [];
+    const zoomText = zoomSheet.querySelector(".textLayer");
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    for (let i = 0; i < 30; i++) {
+      retired.push(zoomSheet.querySelector("canvas"));
+      pinch("gesturestart", 1);
+      pinch("gesturechange", i % 2 ? 0.5 : 2);
+      await pause(50);
+      pinch("gestureend", i % 2 ? 0.5 : 2);
+      await pause(i % 6 === 5 ? 350 : 200);
+    }
+    await wait(() => zoomSheet.dataset.renderScale === "1.5");
+    await pause(300);
+    const currentCanvas = zoomSheet.querySelector("canvas");
+    const retainedPixels = retired
+      .filter((canvas) => canvas && canvas !== currentCanvas)
+      .reduce((total, canvas) => total + canvas.width * canvas.height, 0);
+    if (retainedPixels !== 0)
+      throw new Error(`Retired bitmaps retain ${retainedPixels} pixels`);
+    if (zoomSheet.querySelector(".textLayer") !== zoomText)
+      throw new Error("Zoom rebuilt the text layer");
+    if (first.querySelector(".zoom-label").textContent !== "150%")
+      throw new Error("Zoom controls stopped updating");
     let denied = false;
     try {
       await invoke("read_pdf", { path: "/etc/passwd" });
@@ -113,6 +137,8 @@
         continuousScroll: true,
         syntheticPinchZoom: true,
         retainedPinchBitmap: true,
+        repeatedZooms: 30,
+        retiredPixels: retainedPixels,
         savedAppearance: "orange/dark",
         inkPixels: ink,
         initialPage,

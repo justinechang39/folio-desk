@@ -221,3 +221,82 @@ test("large zoom-out keeps virtual pages and bitmap memory bounded", async ({
   await expect.poll(() => input.inputValue()).not.toBe("40");
   await expect(pane.locator('[role="alert"]')).toHaveCount(0);
 });
+
+test("repeated zooms release retired and cancelled bitmaps and retain text geometry", async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await page.addInitScript(() => {
+    const refs: WeakRef<HTMLCanvasElement>[] = [];
+    const create = document.createElement.bind(document);
+    document.createElement = ((tag: string, ...args: unknown[]) => {
+      const el = create(tag, ...(args as []));
+      if (tag === "canvas") refs.push(new WeakRef(el as HTMLCanvasElement));
+      return el;
+    }) as typeof document.createElement;
+    (window as any).rasterStats = () => {
+      let attached = 0,
+        detached = 0;
+      for (const ref of refs) {
+        const canvas = ref.deref();
+        if (canvas?.dataset.pdfRaster) {
+          if (canvas.isConnected) attached += canvas.width * canvas.height;
+          else detached += canvas.width * canvas.height;
+        }
+      }
+      return { attached, detached };
+    };
+  });
+  await page.goto("/");
+  await page
+    .getByTestId("file-input")
+    .setInputFiles(path.resolve("tests/fixtures/questions.pdf"));
+  const pane = page.locator('[data-slot="0"]');
+  await expect(pane.locator("canvas").first()).toBeVisible();
+  await pane.locator(".zoom-label").click();
+  const sheet = pane.locator('[data-page="1"] .pdf-sheet');
+  await expect(sheet).toHaveAttribute("data-render-scale", "1");
+  const result = await pane.evaluate(async (pane) => {
+    const sheet = pane.querySelector<HTMLElement>(
+      '[data-page="1"] .pdf-sheet',
+    )!;
+    const text = sheet.querySelector(".textLayer");
+    const oldCanvases: HTMLCanvasElement[] = [];
+    const scroller = pane.querySelector(".page-scroll")!;
+    const pause = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms));
+    function gesture(type: string, scale: number) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "scale", { value: scale });
+      scroller.dispatchEvent(event);
+    }
+    for (let i = 0; i < 16; i++) {
+      oldCanvases.push(sheet.querySelector("canvas")!);
+      gesture("gesturestart", 1);
+      gesture("gesturechange", i % 2 ? 0.5 : 2);
+      await pause(40);
+      gesture("gestureend", i % 2 ? 0.5 : 2);
+      // Mix settled renders with rapid restarts that cancel refinement.
+      await pause(i % 4 < 2 ? 250 : 25);
+    }
+    await pause(700);
+    const current = sheet.querySelector("canvas");
+    return {
+      textReused: sheet.querySelector(".textLayer") === text,
+      retiredPixels: oldCanvases
+        .filter((canvas) => canvas !== current)
+        .reduce((sum, canvas) => sum + canvas.width * canvas.height, 0),
+      stats: (window as any).rasterStats(),
+    };
+  });
+  expect(result.textReused).toBe(true);
+  expect(result.retiredPixels).toBe(0);
+  expect(result.stats.detached).toBe(0);
+  expect(result.stats.attached).toBeLessThanOrEqual(16_000_000);
+  await pane
+    .getByRole("button", { name: "Hide from pane", exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).rasterStats()))
+    .toEqual({ attached: 0, detached: 0 });
+});
