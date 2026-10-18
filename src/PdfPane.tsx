@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import type { Doc } from "./model";
 import ContinuousPages from "./ContinuousPages";
-import { usePdfZoom } from "./usePdfZoom";
 import { readPdf } from "./bridge";
 GlobalWorkerOptions.workerSrc = workerUrl;
 export function Tool({
@@ -143,14 +142,6 @@ export default function PdfPane(p: Props) {
   useEffect(() => {
     setPageInput(String(doc?.page ?? 1));
   }, [doc?.page]);
-  usePdfZoom(
-    body,
-    doc?.id,
-    !!pdf,
-    scale,
-    (zoom) => p.onPatch({ fit: "manual", zoom }),
-    p.onFocus,
-  );
   async function find() {
     if (!pdf || !query.trim()) return;
     const generation = ++searchGeneration.current;
@@ -405,6 +396,8 @@ export default function PdfPane(p: Props) {
                 size={size}
                 scrollRef={body}
                 onScrollPosition={p.onScrollPosition}
+                onZoomCommit={p.onPatch}
+                onFocus={p.onFocus}
                 onScale={(value) => {
                   setScale(value);
                   p.onScale(value);

@@ -22,7 +22,7 @@ The first release is ad-hoc signed, not Apple-notarized. macOS may require **Sys
 - Drop a document onto another workspace tab to move it there. The **•••** menu also lets you move it to an existing or new workspace, assign a pane, or remove it from the workspace.
 - Shrinking a layout keeps extra documents in the list. Click one to show it in the active pane.
 - Use **Focus this pane** to expand one PDF temporarily; press Escape to return.
-- Pinch with two fingers over a PDF to zoom that pane (25–400%). Two-finger scrolling still scrolls normally. Command/Ctrl + scroll also zooms.
+- Pinch with two fingers over a PDF to zoom that pane (25–400%). Pages stay visible throughout the gesture, with the point under your pointer anchored; sharper rendering replaces the preview after release. Two-finger scrolling still scrolls normally. Command/Ctrl + scroll also zooms.
 - Scroll continuously through each PDF independently. Only nearby pages are rendered. Page, scroll position, zoom, fit, and rotation follow the document when it moves.
 - **Link pages** navigates visible PDFs to the same page number. Shorter documents stop at their final page. It does not synchronize scrolling or infer matching content.
 - Search finds pages containing selectable text. It does not perform OCR, highlight individual matches, or search text embedded only in scans.

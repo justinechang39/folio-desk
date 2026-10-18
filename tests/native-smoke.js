@@ -68,6 +68,11 @@
     ).textContent;
     first.querySelector(".zoom-label").click();
     await wait(() => first.querySelector(".zoom-label").textContent === "100%");
+    const zoomSheet = first.querySelector(
+      `[data-page="${initialPage + 1}"] .pdf-sheet`,
+    );
+    await wait(() => zoomSheet?.dataset.renderScale === "1");
+    const zoomCanvas = zoomSheet.querySelector("canvas");
     function pinch(type, scale) {
       const event = new Event(type, { bubbles: true, cancelable: true });
       Object.defineProperty(event, "scale", { value: scale });
@@ -77,9 +82,14 @@
     pinch("gesturestart", 1);
     pinch("gesturechange", 1.2);
     await wait(() => first.querySelector(".zoom-label").textContent === "120%");
+    if (zoomSheet.querySelector("canvas") !== zoomCanvas)
+      throw new Error("Native pinch replaced the displayed bitmap mid-gesture");
     pinch("gesturechange", 1.5);
     await wait(() => first.querySelector(".zoom-label").textContent === "150%");
+    if (zoomSheet.querySelector("canvas") !== zoomCanvas)
+      throw new Error("Native pinch replaced the displayed bitmap mid-gesture");
     pinch("gestureend", 1.5);
+    await wait(() => zoomSheet.dataset.renderScale === "1.5");
     if (
       document.querySelector('[data-slot="1"] .zoom-label').textContent !==
       otherZoom
@@ -102,6 +112,7 @@
         panes: 2,
         continuousScroll: true,
         syntheticPinchZoom: true,
+        retainedPinchBitmap: true,
         savedAppearance: "orange/dark",
         inkPixels: ink,
         initialPage,
@@ -114,6 +125,10 @@
       report: JSON.stringify({
         passed: false,
         error: String(e),
+        stage,
+        scrollTop: document.querySelector(".page-scroll")?.scrollTop,
+        currentPage: document.querySelector('[data-slot="0"] input')?.value,
+        scrollSize: document.querySelector(".page-scroll")?.clientHeight,
         mode: document.documentElement.dataset.mode,
         panes: document.querySelectorAll(".continuous-pages").length,
         canvas: document.querySelectorAll(".pdf-sheet canvas").length,

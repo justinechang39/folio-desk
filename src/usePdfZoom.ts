@@ -1,66 +1,95 @@
 import { useEffect, useRef, type RefObject } from "react";
 
-// macOS WebKit reports pinch gestures separately from wheel events. Its scale
-// is cumulative from gesturestart, not a multiplier for each gesturechange.
-type PinchEvent = Event & { scale?: number };
+export type ZoomPoint = { x: number; y: number };
+type PinchEvent = Event & {
+  scale?: number;
+  clientX?: number;
+  clientY?: number;
+};
+type ZoomCallbacks = {
+  begin: (point: ZoomPoint) => number;
+  update: (scale: number) => void;
+  end: (scale: number) => void;
+};
+
+// Input only: live preview and the single persisted commit belong to the viewer.
 export function usePdfZoom(
   body: RefObject<HTMLDivElement | null>,
-  documentID: string | undefined,
+  documentID: string,
   enabled: boolean,
-  scale: number,
-  onZoom: (zoom: number) => void,
-  onFocus: () => void,
+  callbacks: ZoomCallbacks,
 ) {
-  const callbacks = useRef({ onZoom, onFocus });
-  callbacks.current = { onZoom, onFocus };
-  const liveScale = useRef(scale);
-  useEffect(() => {
-    liveScale.current = scale;
-  }, [scale]);
+  const latest = useRef(callbacks);
+  latest.current = callbacks;
   useEffect(() => {
     const element = body.current;
     if (!element || !enabled) return;
-    let startScale: number | null = null;
-    let pending: number | null = null;
-    let frame = 0;
-    function flush() {
+    let active: "pinch" | "wheel" | null = null;
+    let startScale = 1,
+      scale = 1,
+      frame = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function point(event: PinchEvent): ZoomPoint {
+      const rect = element!.getBoundingClientRect();
+      return {
+        x:
+          event.clientX !== undefined &&
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right
+            ? event.clientX - rect.left
+            : rect.width / 2,
+        y:
+          event.clientY !== undefined &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+            ? event.clientY - rect.top
+            : rect.height / 2,
+      };
+    }
+    function begin(event: PinchEvent, kind: "pinch" | "wheel") {
+      active = kind;
+      startScale = scale = latest.current.begin(point(event));
+    }
+    function preview() {
+      frame = 0;
+      latest.current.update(scale);
+    }
+    function update(value: number) {
+      if (!Number.isFinite(value) || value <= 0) return;
+      scale = Math.min(4, Math.max(0.25, value));
+      if (!frame) frame = requestAnimationFrame(preview);
+    }
+    function finish() {
+      if (!active) return;
+      clearTimeout(timer);
       cancelAnimationFrame(frame);
       frame = 0;
-      if (pending === null) return;
-      const zoom = pending;
-      pending = null;
-      callbacks.current.onZoom(zoom);
+      active = null;
+      latest.current.end(scale);
     }
-    function zoomTo(value: number) {
-      if (!Number.isFinite(value) || value <= 0) return;
-      liveScale.current = Math.min(4, Math.max(0.25, value));
-      pending = liveScale.current;
-      if (!frame) frame = requestAnimationFrame(flush);
-    }
-    function start(event: Event) {
+    function start(event: PinchEvent) {
       event.preventDefault();
-      startScale = liveScale.current;
-      callbacks.current.onFocus();
+      // WebKit's scale is relative to the beginning of this gesture.
+      if (active) finish();
+      begin(event, "pinch");
     }
     function change(event: PinchEvent) {
-      if (startScale === null) return;
+      if (active !== "pinch") return;
       event.preventDefault();
-      if (event.scale !== undefined) zoomTo(startScale * event.scale);
+      if (event.scale !== undefined) update(startScale * event.scale);
     }
     function end(event: PinchEvent) {
       change(event);
-      startScale = null;
-      flush();
-    }
-    function blur() {
-      startScale = null;
-      flush();
+      finish();
     }
     function wheel(event: WheelEvent) {
-      if (!event.ctrlKey && !event.metaKey) return;
+      if (!event.ctrlKey && !event.metaKey) {
+        if (active === "wheel") finish();
+        return;
+      }
       event.preventDefault();
-      // Avoid applying both event families for the same pinch.
-      if (startScale !== null || !event.deltaY) return;
+      if (active === "pinch" || !event.deltaY) return;
+      if (!active) begin(event, "wheel");
       const units =
         event.deltaMode === 1
           ? 16
@@ -68,21 +97,23 @@ export function usePdfZoom(
             ? element!.clientHeight
             : 1;
       const delta = Math.max(-100, Math.min(100, event.deltaY * units));
-      callbacks.current.onFocus();
-      zoomTo(liveScale.current * Math.exp(-delta * 0.005));
+      update(scale * Math.exp(-delta * 0.005));
+      clearTimeout(timer);
+      timer = setTimeout(finish, 160);
     }
     element.addEventListener("gesturestart", start, { passive: false });
     element.addEventListener("gesturechange", change, { passive: false });
     element.addEventListener("gestureend", end, { passive: false });
     element.addEventListener("wheel", wheel, { passive: false });
-    window.addEventListener("blur", blur);
+    window.addEventListener("blur", finish);
     return () => {
       cancelAnimationFrame(frame);
+      clearTimeout(timer);
       element.removeEventListener("gesturestart", start);
       element.removeEventListener("gesturechange", change);
       element.removeEventListener("gestureend", end);
       element.removeEventListener("wheel", wheel);
-      window.removeEventListener("blur", blur);
+      window.removeEventListener("blur", finish);
     };
   }, [body, documentID, enabled]);
 }
