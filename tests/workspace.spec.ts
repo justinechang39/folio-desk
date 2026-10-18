@@ -360,3 +360,94 @@ test("bounds rendered pages in a long mixed-size PDF and preserves its anchor du
     expect(colors.background).not.toBe(colors.text);
   }
 });
+
+test("trackpad pinch zooms only its PDF and keeps ordinary scrolling", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .getByTestId("file-input")
+    .setInputFiles([fixture("questions.pdf"), fixture("answers.pdf")]);
+  const first = page.locator('[data-slot="0"]');
+  const second = page.locator('[data-slot="1"]');
+  await expect(first.locator("canvas").first()).toBeVisible();
+  await expect(second.locator("canvas").first()).toBeVisible();
+  await first.locator(".zoom-label").click();
+  await expect(first.locator(".zoom-label")).toHaveText("100%");
+  const otherZoom = await second.locator(".zoom-label").textContent();
+  const scroller = first.locator(".page-scroll");
+  async function gesture(type: string, scale?: number) {
+    return scroller.evaluate(
+      (el, { type, scale }) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        if (scale !== undefined)
+          Object.defineProperty(event, "scale", { value: scale });
+        el.dispatchEvent(event);
+        return event.defaultPrevented;
+      },
+      { type, scale },
+    );
+  }
+  expect(await gesture("gesturestart", 1)).toBe(true);
+  expect(await gesture("gesturechange", 1.2)).toBe(true);
+  await expect(first.locator(".zoom-label")).toHaveText("120%");
+  // Cumulative scale must use the gesture's original zoom across React renders.
+  await gesture("gesturechange", 1.5);
+  await expect(first.locator(".zoom-label")).toHaveText("150%");
+  await scroller.dispatchEvent("wheel", { deltaY: -100, ctrlKey: true });
+  await gesture("gestureend", 1.5);
+  await expect(first.locator(".zoom-label")).toHaveText("150%");
+  await gesture("gesturestart", 1);
+  await gesture("gesturechange", 0.5);
+  await gesture("gestureend", 0.5);
+  await expect(first.locator(".zoom-label")).toHaveText("75%");
+  await expect(second.locator(".zoom-label")).toHaveText(otherZoom!);
+  await expect(
+    first.getByRole("button", { name: "Fit page", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("folio-session")!).views[0]
+            .documents[0].zoom,
+      ),
+    )
+    .toBe(0.75);
+  for (const [scale, label] of [
+    [100, "400%"],
+    [0.001, "25%"],
+  ] as const) {
+    await gesture("gesturestart", 1);
+    await gesture("gestureend", scale);
+    await expect(first.locator(".zoom-label")).toHaveText(label);
+  }
+  await first.locator(".zoom-label").click();
+  await expect(first.locator(".zoom-label")).toHaveText("100%");
+  // Multiple wheel events before a frame accumulate instead of dropping deltas.
+  await scroller.evaluate((el) => {
+    for (let i = 0; i < 2; i++)
+      el.dispatchEvent(
+        new WheelEvent("wheel", {
+          deltaY: -20,
+          ctrlKey: true,
+          cancelable: true,
+        }),
+      );
+  });
+  await expect(first.locator(".zoom-label")).toHaveText("122%");
+  expect(
+    await scroller.evaluate((el) => {
+      const event = new WheelEvent("wheel", { deltaY: 100, cancelable: true });
+      el.dispatchEvent(event);
+      return event.defaultPrevented;
+    }),
+  ).toBe(false);
+  await scroller.hover();
+  await page.mouse.wheel(0, 700);
+  await expect
+    .poll(() => scroller.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(200);
+  await expect(first.locator(".zoom-label")).toHaveText("122%");
+  await expect(second.locator(".zoom-label")).toHaveText(otherZoom!);
+});

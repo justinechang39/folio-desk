@@ -62,6 +62,33 @@
         state?.appearance?.theme === "orange"
       );
     });
+    stage = "native WebKit pinch zoom";
+    const otherZoom = document.querySelector(
+      '[data-slot="1"] .zoom-label',
+    ).textContent;
+    first.querySelector(".zoom-label").click();
+    await wait(() => first.querySelector(".zoom-label").textContent === "100%");
+    function pinch(type, scale) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "scale", { value: scale });
+      scroller.dispatchEvent(event);
+      if (!event.defaultPrevented) throw new Error(`Unclaimed ${type}`);
+    }
+    pinch("gesturestart", 1);
+    pinch("gesturechange", 1.2);
+    await wait(() => first.querySelector(".zoom-label").textContent === "120%");
+    pinch("gesturechange", 1.5);
+    await wait(() => first.querySelector(".zoom-label").textContent === "150%");
+    pinch("gestureend", 1.5);
+    if (
+      document.querySelector('[data-slot="1"] .zoom-label').textContent !==
+      otherZoom
+    )
+      throw new Error("Pinch changed the other pane");
+    await wait(
+      async () =>
+        (await invoke("load_session"))?.views[0]?.documents[0]?.zoom === 1.5,
+    );
     let denied = false;
     try {
       await invoke("read_pdf", { path: "/etc/passwd" });
@@ -74,6 +101,7 @@
         passed: true,
         panes: 2,
         continuousScroll: true,
+        syntheticPinchZoom: true,
         savedAppearance: "orange/dark",
         inkPixels: ink,
         initialPage,
