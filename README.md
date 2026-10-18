@@ -51,7 +51,7 @@ The Nord, Dracula, and Solarized options adapt their familiar palettes to the re
 
 ## Local storage and privacy
 
-Rust handles native dialogs, PDF validation and reading, and atomic session saves. Tauri uses macOS’s system WebKit; React provides the interface, and the bundled Mozilla PDF.js renderer draws PDFs in a worker. No Node runtime, external PDF app, cloud service, telemetry, or online fonts are needed at runtime.
+Rust handles native dialogs, PDF validation and reading, and atomic session saves. Tauri uses macOS’s system WebKit; React provides the interface, and the bundled Mozilla PDF.js parses PDFs in a worker and renders pages into browser canvases. No Node runtime, external PDF app, cloud service, telemetry, or online fonts are needed at runtime.
 
 Only PDF files are accepted (extension and PDF header checked in Rust), up to **256 MB per file**. Every file is read-only. Originals are never modified. A PDF must first be imported before the renderer can read it through the native bridge.
 
@@ -111,6 +111,10 @@ python3 scripts/test-native.py
 ```
 
 This builds a test-only feature and uses a separate application identifier and data folder. It verifies PDF pixels, text, native file reads, saved page state, rejection of non-PDF reads, and saved theme settings. The smoke-test hook is absent from normal release builds.
+
+## Native viewer experiment
+
+A separate two-pane PDFKit prototype is available for comparing native macOS scrolling and pinch zoom with the existing viewer. It does not replace Folio Desk or change its saved workspaces. See [build, installation, and local test instructions](native-preview/README.md).
 
 ## Releases
 
