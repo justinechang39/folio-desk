@@ -423,16 +423,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     for url in urls.prefix(200) {
       do {
         let path = try bridge(["op": "validate", "path": url.path]) as! String
-        let doc = workspace.documents.first { $0.path == path } ?? DocumentState(path: path)
-        if !workspace.documents.contains(where: { $0.id == doc.id }) {
-          workspace.documents.append(doc)
-        }
-        if first, let target {
-          workspace.assign(doc.id, to: target)
-        } else if !workspace.slots.contains(doc.id), let empty = workspace.slots.firstIndex(of: nil)
-        {
-          workspace.assign(doc.id, to: empty)
-        }
+        workspace.open(path, in: first ? target : nil)
         first = false
       } catch { errors.append("\(url.lastPathComponent): \(error.localizedDescription)") }
     }
@@ -638,7 +629,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     let row = table.selectedRow
     guard workspace.documents.indices.contains(row) else { return }
     capturePanes()
-    workspace.assign(workspace.documents[row].id, to: workspace.focused)
+    workspace.show(workspace.documents[row].id, in: workspace.focused)
     buildLayout()
     table.reloadData()
     scheduleSave()
@@ -692,7 +683,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
       item.representedObject = ["id": id, "op": operation, "dest": destination]
       menu.addItem(item)
     }
-    for slot in workspace.slots.indices { item("Show in pane \(slot+1)", "assign", String(slot)) }
+    for slot in workspace.slots.indices { item("Open in pane \(slot+1)", "assign", String(slot)) }
     menu.addItem(.separator())
     for view in session.views where view.id != session.active {
       item("Move to \(view.name)", "move", view.id)
@@ -709,7 +700,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     }
     capturePanes()
     switch data["op"] {
-    case "assign": workspace.assign(id, to: Int(data["dest"] ?? "0") ?? 0)
+    case "assign": workspace.show(id, in: Int(data["dest"] ?? "0") ?? 0)
     case "move": session.move(id, from: session.active, to: data["dest"]!)
     case "new":
       let new = Workspace(name: "Workspace \(session.views.count+1)")

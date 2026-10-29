@@ -43,6 +43,13 @@ final class DocumentState: Codable {
     self.path = path
     name = URL(fileURLWithPath: path).lastPathComponent
   }
+  func independentCopy() -> DocumentState {
+    let copy = DocumentState(path: path)
+    copy.name = name
+    copy.page = page; copy.zoom = zoom; copy.fit = fit; copy.rotation = rotation
+    copy.offset = offset; copy.pointX = pointX; copy.pointY = pointY
+    return copy
+  }
 }
 final class Workspace: Codable {
   var id = UUID().uuidString
@@ -58,6 +65,33 @@ final class Workspace: Codable {
     if let old = slots.firstIndex(of: id), old != slot { slots[old] = slots[slot] }
     slots[slot] = id
     focused = slot
+  }
+  /// Opening a visible document elsewhere creates an independent reading view.
+  /// Explicit drag moves still use assign(), which swaps the existing views.
+  func show(_ id: String, in slot: Int) {
+    guard slots.indices.contains(slot), let doc = documents.first(where: { $0.id == id }) else { return }
+    if slots.contains(id), slots[slot] != id {
+      let copy = doc.independentCopy()
+      documents.append(copy)
+      assign(copy.id, to: slot)
+    } else { assign(id, to: slot) }
+  }
+  @discardableResult
+  func open(_ path: String, in target: Int? = nil) -> DocumentState {
+    let slot = target ?? slots.firstIndex(of: nil)
+    if let slot, slots.indices.contains(slot),
+      let current = documents.first(where: { $0.id == slots[slot] && $0.path == path }) {
+      focused = slot
+      return current
+    }
+    // Reuse an unshown reading view first; a visible view must retain its own state.
+    let existing = documents.first { $0.path == path && !slots.contains($0.id) }
+      ?? (slot == nil ? documents.first { $0.path == path } : nil)
+    let doc = existing ?? documents.first(where: { $0.path == path })?.independentCopy()
+      ?? DocumentState(path: path)
+    if !documents.contains(where: { $0.id == doc.id }) { documents.append(doc) }
+    if let slot { assign(doc.id, to: slot) }
+    return doc
   }
   func setLayout(_ value: String) {
     layout = value
@@ -146,14 +180,9 @@ final class Session: Codable {
       return
     }
     source.remove(id)
-    // Reuse an existing destination document for the same file, avoiding duplicate slots.
-    let destinationDoc = dest.documents.first { $0.path == doc.path } ?? doc
-    if !dest.documents.contains(where: { $0.id == destinationDoc.id }) {
-      dest.documents.append(destinationDoc)
-    }
-    if let target = slot ?? dest.slots.firstIndex(of: nil) {
-      dest.assign(destinationDoc.id, to: target)
-    }
+    // Reading views remain independent even when the destination already has this PDF.
+    if !dest.documents.contains(where: { $0.id == doc.id }) { dest.documents.append(doc) }
+    if let target = slot ?? dest.slots.firstIndex(of: nil) { dest.assign(doc.id, to: target) }
   }
 }
 var accent = NSColor.systemOrange

@@ -17,7 +17,8 @@ The app is ad-hoc signed, not notarized by Apple. For a downloaded build, macOS 
 - Each tab is a workspace. Use **+**, **Rename**, and **×** to manage tabs.
 - Choose **Single**, **Side by side**, **Stacked**, **Three columns**, or **2 × 2**. Drag dividers to resize panes. Layout changes retain extra PDFs in the document list.
 - **Add PDFs…**, a pane's **Open…** button, Finder's **Open With → Folio Desk**, or dropping files into a pane opens PDFs. Only PDFs up to 256 MB each are accepted.
-- Click a document to display it in the active pane. Drag its row to a pane to swap/assign it, or to another tab to move it. Right-click a row for pane assignments, moving to another/new workspace, showing it in Finder, or removing it. Drag rows within the document list to reorder them.
+- Open the same PDF in several panes using each pane’s **Open…** button, a file drop, or **Open in pane…** in the document’s right-click menu. Each view keeps its own page, scroll position, zoom, and rotation, including after restarting. **Link pages** remains optional.
+- Click a document to display it in the active pane; if it is already visible elsewhere, Folio opens an independent view alongside it. Drag its row to a pane to swap/assign it, or to another tab to move it. Right-click a row for pane assignments, moving to another/new workspace, showing it in Finder, or removing it. Drag rows within the document list to reorder them.
 - Scroll and pinch independently in each pane. Use **−/+**, **Width**, **Page**, the page-number field, and rotation controls. Zoom spans 10–800%.
 - **Focus** expands the active pane; press Escape or **Focus** again to restore the layout. Clicking, pinching, or scrolling in a pane makes it active for keyboard controls.
 - **Link pages** synchronizes page numbers across visible PDFs. Shorter documents stop at their last page; this does not infer corresponding content or synchronize exact scroll offsets.
