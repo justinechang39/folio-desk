@@ -61,6 +61,23 @@ final class Workspace: Codable {
   var focused = 0
   var linked = false
   init(name: String = "Workspace 1") { self.name = name }
+  var filePaths: [String] {
+    var seen = Set<String>()
+    return documents.compactMap { seen.insert($0.path).inserted ? $0.path : nil }
+  }
+  func readingView(for path: String) -> DocumentState? {
+    let views = documents.filter { $0.path == path }
+    return views.first { $0.id == slots[focused] }
+      ?? views.first { slots.contains($0.id) } ?? views.first
+  }
+  // Reorder the whole file relative to the drop target without changing any pane.
+  func reorderFile(_ path: String, before nextPath: String?) {
+    guard path != nextPath else { return }
+    let views = documents.filter { $0.path == path }
+    documents.removeAll { $0.path == path }
+    let index = documents.firstIndex { $0.path == nextPath } ?? documents.endIndex
+    documents.insert(contentsOf: views, at: index)
+  }
   func assign(_ id: String, to slot: Int) {
     guard slots.indices.contains(slot), documents.contains(where: { $0.id == id }) else { return }
     if let old = slots.firstIndex(of: id), old != slot { slots[old] = slots[slot] }
@@ -207,6 +224,16 @@ final class Session: Codable {
     return session
   }
   func json() throws -> Any { try JSONSerialization.jsonObject(with: JSONEncoder().encode(self)) }
+  func moveFile(_ id: String, from sourceID: String, to destinationID: String, slot: Int? = nil) {
+    guard let source = views.first(where: { $0.id == sourceID }),
+      let selected = source.documents.first(where: { $0.id == id })
+    else { return }
+    let siblings = source.documents.filter { $0.path == selected.path && $0.id != id }
+    move(id, from: sourceID, to: destinationID, slot: slot)
+    if sourceID != destinationID {
+      for view in siblings { move(view.id, from: sourceID, to: destinationID) }
+    }
+  }
   func move(_ id: String, from sourceID: String, to destinationID: String, slot: Int? = nil) {
     guard let source = views.first(where: { $0.id == sourceID }),
       let dest = views.first(where: { $0.id == destinationID }),

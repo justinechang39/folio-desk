@@ -51,6 +51,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
   let linkButton = NSButton(checkboxWithTitle: "Link pages", target: nil, action: nil)
   let sidebarButton = NSButton(title: "Documents", target: nil, action: nil)
   let table = DocumentTable()
+  private var sidebarPaths: [String] = []
   let sidebar = NSScrollView()
   let paneHost = NSView()
   var splitController: NSViewController?
@@ -286,7 +287,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
         guard let self else { return }
         self.capturePanes()
         if let ids = dragIDs(pasteboard) {
-          self.session.move(ids[1], from: ids[0], to: workspace.id)
+          self.session.moveFile(ids[1], from: ids[0], to: workspace.id)
         }
         self.session.active = workspace.id
         self.focusedOnly = false
@@ -307,7 +308,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     sidebar.isHidden = !session.sidebar
     sidebarButton.state = session.sidebar ? .on : .off
     linkButton.state = workspace.linked ? .on : .off
-    table.reloadData()
+    reloadDocumentList()
     window?.subtitle = workspace.name
   }
   func capturePanes() { for pane in panes { pane.capture() } }
@@ -340,7 +341,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
       pane.documentDropped = { [weak self] source, doc in
         guard let self else { return }
         self.capturePanes()
-        self.session.move(doc, from: source, to: self.session.active, slot: slot)
+        self.session.moveFile(doc, from: source, to: self.session.active, slot: slot)
         self.refreshChrome()
         self.buildLayout()
         self.scheduleSave()
@@ -565,7 +566,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     }
     tint(root.view)
     for pane in panes { pane.pdf.backgroundColor = desk }
-    table.reloadData()
+    reloadDocumentList()
   }
   func scheduleSave() {
     guard !restoringLayout else { return }
@@ -617,10 +618,18 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
   func showError(_ error: Error) { NSAlert(error: error).beginSheetModal(for: window) }
 
-  func numberOfRows(in tableView: NSTableView) -> Int { workspace.documents.count }
+  private func reloadDocumentList() {
+    sidebarPaths = workspace.filePaths
+    table.reloadData()
+  }
+  private func sidebarDocument(at row: Int) -> DocumentState? {
+    guard sidebarPaths.indices.contains(row) else { return nil }
+    return workspace.readingView(for: sidebarPaths[row])
+  }
+  func numberOfRows(in tableView: NSTableView) -> Int { sidebarPaths.count }
   func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView?
   {
-    let doc = workspace.documents[row]
+    guard let doc = sidebarDocument(at: row) else { return nil }
     let slot = workspace.slots.firstIndex(of: doc.id)
     let field = NSTextField(labelWithString: doc.name)
     field.lineBreakMode = .byTruncatingMiddle
@@ -633,28 +642,17 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     labels.alignment = .leading
     labels.spacing = 1
     let sameFile = workspace.documents.filter { $0.path == doc.path }
-    if sameFile.count > 1 {
-      let location: String
-      if let slot {
-        switch workspace.layout {
-        case "columns": location = ["Left pane", "Right pane"][slot]
-        case "rows": location = ["Top pane", "Bottom pane"][slot]
-        case "triple": location = ["Left pane", "Middle pane", "Right pane"][slot]
-        case "grid": location = ["Top left", "Top right", "Bottom left", "Bottom right"][slot]
-        default: location = "Current pane"
-        }
-      } else {
-        location = "Saved view"
-      }
-      let detail = NSTextField(labelWithString: location)
+    let paneCount = sameFile.filter { workspace.slots.contains($0.id) }.count
+    if paneCount > 1 {
+      let detail = NSTextField(labelWithString: "\(paneCount) panes")
       detail.font = .systemFont(ofSize: 10)
       detail.textColor = .secondaryLabelColor
       labels.addArrangedSubview(detail)
     }
-    let compared = slot != nil && sameFile.filter { workspace.slots.contains($0.id) }.count > 1
+    let compared = paneCount > 1
     let compare = compareButton(
       self, #selector(compareRow(_:)), name: doc.name, filled: compared)
-    compare.identifier = NSUserInterfaceItemIdentifier(doc.id)
+    compare.identifier = NSUserInterfaceItemIdentifier(doc.path)
     compare.isBordered = false
     compare.contentTintColor = compared ? accent : .secondaryLabelColor
     let cell = NSTableCellView()
@@ -675,12 +673,14 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     return cell
   }
   @objc func compareRow(_ sender: NSButton) {
-    if let id = sender.identifier?.rawValue { compareDocument(id) }
+    if let path = sender.identifier?.rawValue, let doc = workspace.readingView(for: path) {
+      compareDocument(doc.id)
+    }
   }
   /// The document list's selection when it has keyboard focus, otherwise the active pane.
   var compareTarget: String? {
-    if window.firstResponder === table, workspace.documents.indices.contains(table.selectedRow) {
-      return workspace.documents[table.selectedRow].id
+    if window.firstResponder === table, let doc = sidebarDocument(at: table.selectedRow) {
+      return doc.id
     }
     return activePane?.state?.id
   }
@@ -708,15 +708,8 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
       ])
   }
   @objc func selectDocument() {
-    let row = table.selectedRow
-    guard workspace.documents.indices.contains(row) else { return }
-    let doc = workspace.documents[row]
-    // Selecting a labeled comparison view should take the reader to that pane.
-    if let slot = workspace.slots.firstIndex(of: doc.id),
-      workspace.documents.contains(where: {
-        $0.id != doc.id && $0.path == doc.path && workspace.slots.contains($0.id)
-      })
-    {
+    guard let doc = sidebarDocument(at: table.selectedRow) else { return }
+    if let slot = workspace.slots.firstIndex(of: doc.id) {
       let reveal = focusedOnly && workspace.focused != slot
       workspace.focused = slot
       if reveal { buildLayout() }
@@ -727,13 +720,14 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     capturePanes()
     workspace.show(doc.id, in: workspace.focused)
     buildLayout()
-    table.reloadData()
+    reloadDocumentList()
     scheduleSave()
   }
   func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting?
   {
+    guard let doc = sidebarDocument(at: row) else { return nil }
     let item = NSPasteboardItem()
-    let data = try! JSONEncoder().encode([workspace.id, workspace.documents[row].id])
+    let data = try! JSONEncoder().encode([workspace.id, doc.id])
     item.setString(String(data: data, encoding: .utf8)!, forType: documentDragType)
     return item
   }
@@ -750,12 +744,11 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
   ) -> Bool {
     capturePanes()
     if let ids = dragIDs(info.draggingPasteboard) {
-      session.move(ids[1], from: ids[0], to: session.active)
-      if let old = workspace.documents.firstIndex(where: { $0.id == ids[1] }) {
-        let doc = workspace.documents.remove(at: old)
-        workspace.documents.insert(
-          doc, at: max(0, min(workspace.documents.count, row - (old < row ? 1 : 0))))
-      }
+      guard let source = session.views.first(where: { $0.id == ids[0] }),
+        let doc = source.documents.first(where: { $0.id == ids[1] }) else { return false }
+      let nextPath = sidebarPaths.indices.contains(row) ? sidebarPaths[row] : nil
+      if source !== workspace { session.moveFile(doc.id, from: source.id, to: workspace.id) }
+      workspace.reorderFile(doc.path, before: nextPath)
       refreshChrome()
       buildLayout()
       scheduleSave()
@@ -770,8 +763,8 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     return false
   }
   func documentMenu(_ row: Int) -> NSMenu? {
-    guard workspace.documents.indices.contains(row) else { return nil }
-    let id = workspace.documents[row].id
+    guard let doc = sidebarDocument(at: row) else { return nil }
+    let id = doc.id
     let menu = NSMenu()
     func item(_ title: String, _ operation: String, _ destination: String = "") {
       let item = NSMenuItem(title: title, action: #selector(documentAction(_:)), keyEquivalent: "")
@@ -782,6 +775,19 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     item("Compare side by side", "compare")
     menu.addItem(.separator())
     for slot in workspace.slots.indices { item("Open in pane \(slot+1)", "assign", String(slot)) }
+    let views = workspace.documents.filter { $0.path == doc.path }
+    let saved = views.filter { !workspace.slots.contains($0.id) }
+    if views.count > 1 && !saved.isEmpty {
+      let submenu = NSMenu()
+      for (index, view) in saved.enumerated() {
+        let choice = NSMenuItem(title: "View \(index + 1) · Page \(view.page)",
+          action: #selector(documentAction(_:)), keyEquivalent: "")
+        choice.target = self
+        choice.representedObject = ["id": view.id, "op": "restore"]
+        submenu.addItem(choice)
+      }
+      menu.addItem(withTitle: "Show saved view", action: nil, keyEquivalent: "").submenu = submenu
+    }
     menu.addItem(.separator())
     for view in session.views where view.id != session.active {
       item("Move to \(view.name)", "move", view.id)
@@ -799,14 +805,20 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     if data["op"] == "compare" { return compareDocument(id) }
     capturePanes()
     switch data["op"] {
-    case "assign": workspace.show(id, in: Int(data["dest"] ?? "0") ?? 0)
-    case "move": session.move(id, from: session.active, to: data["dest"]!)
+    case "restore": workspace.assign(id, to: workspace.focused)
+    case "assign":
+      guard let doc = workspace.documents.first(where: { $0.id == id }),
+        let slot = Int(data["dest"] ?? "") else { return }
+      workspace.open(doc.path, in: slot)
+    case "move": session.moveFile(id, from: session.active, to: data["dest"]!)
     case "new":
       let new = Workspace(name: "Workspace \(session.views.count+1)")
       session.views.append(new)
-      session.move(id, from: session.active, to: new.id)
+      session.moveFile(id, from: session.active, to: new.id)
       session.active = new.id
-    case "remove": workspace.remove(id)
+    case "remove":
+      guard let path = workspace.documents.first(where: { $0.id == id })?.path else { return }
+      for view in workspace.documents.filter({ $0.path == path }) { workspace.remove(view.id) }
     case "reveal":
       if let doc = workspace.documents.first(where: { $0.id == id }) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: doc.path)])

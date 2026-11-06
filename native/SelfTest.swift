@@ -189,7 +189,8 @@ extension Application {
     panes[1].navigate(to: 4)
     let split = splitController
     // Repeat from the document row, its context menu, and the menu command.
-    let row = compare.documents.firstIndex { $0.id == questionsID }!
+    let row = compare.filePaths.firstIndex(of: path)!
+    checks["sidebarOneRowPerFile"] = table.numberOfRows == 2 && compare.documents.count == 3
     let rowButton = tableView(table, viewFor: nil, row: row)?.subviews
       .compactMap { $0 as? NSButton }.first
     checks["compareRowButtonAccessible"] = rowButton?.image != nil
@@ -210,7 +211,7 @@ extension Application {
       && capturedPage(questionsID) == 3 && capturedPage(copyID) == 4
     table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
     selectDocument()
-    checks["compareSelectExistingSide"] = compare.focused == 0 && splitController === split
+    checks["compareSelectExistingSide"] = compare.focused == 1 && splitController === split
       && compare.slots == [questionsID, copyID] && compare.documents.count == 3
     // A hidden second view is reused with its own position, whichever view is chosen.
     compare.setLayout("single")
@@ -275,6 +276,19 @@ extension Application {
     }
     checks["compareFirstClickOnSidebarIcon"] = compare.layout == "columns"
       && Set(compare.slots.compactMap { $0 }) == Set([questionsID, copyID!])
+    let entriesBeforeMove = Set(compare.documents.filter { $0.path == path }.map(\.id))
+    compare.reorderFile(path, before: otherPath)
+    checks["sidebarReorderKeepsBothPanes"] = compare.filePaths.first == path
+      && Set(compare.slots.compactMap { $0 }) == entriesBeforeMove
+    let destination = Workspace(name: "File move")
+    session.views.append(destination)
+    session.moveFile(questionsID, from: compare.id, to: destination.id)
+    checks["sidebarMoveIncludesAllViews"] = !compare.filePaths.contains(path)
+      && destination.filePaths == [path] && Set(destination.documents.map(\.id)) == entriesBeforeMove
+    let sameName = "/another-folder/" + URL(fileURLWithPath: path).lastPathComponent
+    destination.open(sameName)
+    checks["sidebarSeparatesFilesWithSameName"] = destination.filePaths == [path, sameName]
+    session.views.removeAll { $0 === destination }
     session.views.removeAll { $0 === compare }
     session.active = original.id
     refreshChrome()
