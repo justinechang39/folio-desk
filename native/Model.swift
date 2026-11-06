@@ -147,6 +147,44 @@ final class Workspace: Codable {
     linked = false
     return .arranged
   }
+  /// Keep matching views in place, then reuse displaced or saved views before cloning.
+  @discardableResult
+  func place(_ doc: DocumentState, in selected: Set<Int>, layout newLayout: String) -> Bool {
+    let original = slots
+    let count = paneCount(newLayout)
+    guard layoutNames.contains(where: { $0.0 == newLayout }),
+      selected.allSatisfy({ (0..<count).contains($0) }) else { return false }
+    var result = Array(slots.prefix(count))
+    result += Array(repeating: nil, count: count - result.count)
+    let siblings = documents.filter { $0.path == doc.path }
+    let ids = Set(siblings.map(\.id))
+    for slot in result.indices where !selected.contains(slot) && result[slot].map(ids.contains) == true {
+      result[slot] = nil
+    }
+    let occupied = Set(result.indices.compactMap { selected.contains($0) ? result[$0] : nil })
+    let candidates = [doc.id] + original.compactMap { $0 } + siblings.map(\.id)
+    var used = occupied
+    var added: Int?
+    for slot in selected.sorted() where result.indices.contains(slot) && result[slot].map(ids.contains) != true {
+      let id: String
+      if let saved = candidates.first(where: { ids.contains($0) && !used.contains($0) }) {
+        id = saved
+      } else {
+        let copy = doc.independentCopy()
+        documents.append(copy)
+        id = copy.id
+      }
+      result[slot] = id
+      used.insert(id)
+      added = slot
+    }
+    guard layout != newLayout || result != slots else { return false }
+    layout = newLayout
+    slots = result
+    focused = added ?? (selected.contains(focused) ? focused : selected.min()) ?? min(focused, count - 1)
+    if selected.count > 1 { linked = false }
+    return true
+  }
   func setLayout(_ value: String) {
     layout = value
     let count = paneCount(value)

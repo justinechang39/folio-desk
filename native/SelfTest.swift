@@ -1,5 +1,6 @@
 import AppKit
 import PDFKit
+import SwiftUI
 
 // Supply window-local coordinates so AppKit can dispatch without moving the user's mouse.
 private final class TestWheelEvent: NSEvent {
@@ -18,6 +19,9 @@ private final class TestWheelEvent: NSEvent {
 }
 
 extension Application {
+  private var paneChoices: PaneChoices? {
+    (panePopover.contentViewController as? NSHostingController<PanePickerView>)?.rootView.choices
+  }
   private func checkWheelZoom() {
     let pane = panes[1]
     let otherScale = panes[0].pdf.scaleFactor
@@ -172,10 +176,14 @@ extension Application {
     refreshChrome()
     buildLayout()
     // Pane button: the path available when the document list is hidden.
-    checks["comparePaneButtonAccessible"] = left.compareControl.isEnabled
-      && left.compareControl.toolTip == compareHelp
-      && left.compareControl.accessibilityLabel()?.contains("questions.pdf") == true
-    left.compareControl.performClick(nil)
+    checks["comparePaneButtonAccessible"] = left.paneButton.isEnabled
+      && left.paneButton.toolTip == panePickerHelp
+      && left.paneButton.accessibilityLabel()?.contains("questions.pdf") == true
+    left.paneButton.performClick(nil)
+    checks["pickerStagesWithoutChangingPanes"] = panePopover.isShown && compare.layout == "single"
+      && paneChoices?.selected == Set([0])
+    paneChoices?.toggle(1)
+    paneChoices?.apply()
     let copyID = compare.slots[1]
     let copy = compare.documents.first { $0.id == copyID }
     checks["compareOpensTwoIndependentViews"] = compare.layout == "columns"
@@ -193,9 +201,9 @@ extension Application {
     checks["sidebarOneRowPerFile"] = table.numberOfRows == 2 && compare.documents.count == 3
     let rowButton = tableView(table, viewFor: nil, row: row)?.subviews
       .compactMap { $0 as? NSButton }.first
-    checks["compareRowButtonAccessible"] = rowButton?.image != nil
-      && rowButton?.toolTip == compareHelp
-      && rowButton?.accessibilityLabel() == "Compare questions.pdf side by side"
+    checks["chooseRowPanesButtonAccessible"] = rowButton?.image != nil
+      && rowButton?.toolTip == panePickerHelp
+      && rowButton?.accessibilityLabel() == "Choose panes for questions.pdf"
     if let rowButton { NSApp.sendAction(rowButton.action!, to: rowButton.target, from: rowButton) }
     checks["compareContextMenuItem"] = documentMenu(row)?.items.first?.title == "Compare side by side"
     workspace.focused = 1
@@ -274,8 +282,31 @@ extension Application {
       }
       RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }
+    checks["sidebarClickOpensPicker"] = panePopover.isShown && compare.layout == "single"
+      && paneChoices?.selected.isEmpty == true
+    paneChoices?.toggle(0)
+    paneChoices?.toggle(1)
+    paneChoices?.apply()
     checks["compareFirstClickOnSidebarIcon"] = compare.layout == "columns"
       && Set(compare.slots.compactMap { $0 }) == Set([questionsID, copyID!])
+    let pair = compare.slots
+    panes[0].paneButton.performClick(nil)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    let initialHeight = panePopover.contentSize.height
+    paneChoices?.changeLayout(to: "grid")
+    RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    checks["pickerResizesForGrid"] = initialHeight > 0 && panePopover.contentSize.height > initialHeight + 25
+    paneChoices?.toggle(1)
+    paneChoices?.toggle(3)
+    panePopover.close()
+    checks["cancelPickerPreservesPair"] = compare.slots == pair && compare.layout == "columns"
+    panes[0].paneButton.performClick(nil)
+    paneChoices?.changeLayout(to: "grid")
+    paneChoices?.toggle(1)
+    paneChoices?.toggle(3)
+    paneChoices?.apply()
+    checks["pickerPlacesDiagonalAndKeepsViews"] = compare.layout == "grid"
+      && compare.slots == [pair[0], nil, nil, pair[1]] && compare.documents.count == 5
     let entriesBeforeMove = Set(compare.documents.filter { $0.path == path }.map(\.id))
     compare.reorderFile(path, before: otherPath)
     checks["sidebarReorderKeepsBothPanes"] = compare.filePaths.first == path

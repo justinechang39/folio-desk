@@ -1,5 +1,6 @@
 import AppKit
 import PDFKit
+import SwiftUI
 import UniformTypeIdentifiers
 
 let documentDragType = NSPasteboard.PasteboardType("io.github.justinechang39.foliodesk.document")
@@ -23,7 +24,7 @@ final class TabButton: NSButton {
 final class DocumentTable: NSTableView {
   var menuForRow: ((Int) -> NSMenu?)?
   override func validateProposedFirstResponder(_ responder: NSResponder, for event: NSEvent?) -> Bool {
-    if let button = responder as? NSButton, button.action == #selector(Application.compareRow(_:)) {
+    if let button = responder as? NSButton, button.action == #selector(Application.chooseRowPanes(_:)) {
       return true
     }
     return super.validateProposedFirstResponder(responder, for: event)
@@ -51,6 +52,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
   let linkButton = NSButton(checkboxWithTitle: "Link pages", target: nil, action: nil)
   let sidebarButton = NSButton(title: "Documents", target: nil, action: nil)
   let table = DocumentTable()
+  let panePopover = NSPopover()
   private var sidebarPaths: [String] = []
   let sidebar = NSScrollView()
   let paneHost = NSView()
@@ -346,8 +348,8 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
         self.buildLayout()
         self.scheduleSave()
       }
-      pane.compareRequested = { [weak self, weak pane] in
-        if let id = pane?.state?.id { self?.compareDocument(id) }
+      pane.choosePanesRequested = { [weak self, weak pane] in
+        if let pane, let doc = pane.state { self?.choosePanes(for: doc, from: pane.paneButton) }
       }
       pane.stateChanged = { [weak self] in self?.scheduleSave() }
       pane.pageChanged = { [weak self, weak pane] number in
@@ -371,9 +373,9 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
         }
         paneCache[id] = pane
       }
-      pane.compareControl.isEnabled = pane.state != nil
-      pane.compareControl.setAccessibilityLabel(
-        "Compare \(pane.state?.name ?? "this PDF") side by side")
+      pane.paneButton.isEnabled = pane.state != nil
+      pane.paneButton.setAccessibilityLabel(
+        "Choose panes for \(pane.state?.name ?? "this PDF")")
       return pane
     }
     func split(_ children: [NSViewController], vertical: Bool) -> NSSplitViewController {
@@ -650,8 +652,8 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
       labels.addArrangedSubview(detail)
     }
     let compared = paneCount > 1
-    let compare = compareButton(
-      self, #selector(compareRow(_:)), name: doc.name, filled: compared)
+    let compare = panePickerButton(
+      self, #selector(chooseRowPanes(_:)), name: doc.name, filled: compared)
     compare.identifier = NSUserInterfaceItemIdentifier(doc.path)
     compare.isBordered = false
     compare.contentTintColor = compared ? accent : .secondaryLabelColor
@@ -672,10 +674,35 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     ])
     return cell
   }
-  @objc func compareRow(_ sender: NSButton) {
+  @objc func chooseRowPanes(_ sender: NSButton) {
     if let path = sender.identifier?.rawValue, let doc = workspace.readingView(for: path) {
-      compareDocument(doc.id)
+      choosePanes(for: doc, from: sender)
     }
+  }
+  private func choosePanes(for doc: DocumentState, from anchor: NSView) {
+    guard anchor.window != nil else { return }
+    if panePopover.isShown { panePopover.close() }
+    let owner = workspace
+    let choices = PaneChoices(workspace: owner, document: doc) { [weak self, weak owner] layout, selected in
+      guard let self, let owner, self.workspace === owner,
+        owner.documents.contains(where: { $0 === doc }) else { return }
+      self.panePopover.close()
+      self.capturePanes()
+      let changed = owner.place(doc, in: selected, layout: layout)
+      if changed || self.focusedOnly {
+        self.focusedOnly = false
+        self.refreshChrome()
+        self.buildLayout()
+        self.scheduleSave()
+      }
+    }
+    let picker = PanePickerView(choices: choices) { [weak self] in self?.panePopover.close() }
+    panePopover.behavior = .transient
+    let host = NSHostingController(rootView: picker)
+    host.sizingOptions = [.preferredContentSize, .intrinsicContentSize]
+    panePopover.contentViewController = host
+    panePopover.contentSize = host.sizeThatFits(in: NSSize(width: 300, height: 600))
+    panePopover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
   }
   /// The document list's selection when it has keyboard focus, otherwise the active pane.
   var compareTarget: String? {
