@@ -125,6 +125,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
           if let id = pane.state?.id, let slot = self.workspace.slots.firstIndex(of: id) {
             self.workspace.focused = slot
           }
+          if event.type == .scrollWheel && pane.handleCommandScroll(event) { return nil }
         }
       }
       return event

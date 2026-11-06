@@ -330,6 +330,24 @@ final class Pane: NSViewController {
       if result == .OK { self?.openURLs?(panel.urls) }
     }
   }
+  // Intercept before PDFKit's nested scroll view consumes the wheel event.
+  func handleCommandScroll(_ event: NSEvent) -> Bool {
+    guard event.modifierFlags.contains(.command), pdf.document != nil,
+      pdf.visibleRect.contains(pdf.convert(event.locationInWindow, from: nil))
+    else { return false }
+    let delta = event.scrollingDeltaY * (event.isDirectionInvertedFromDevice ? -1 : 1)
+    guard event.momentumPhase.isEmpty, delta.isFinite, delta != 0 else { return true }
+    // A wheel notch is roughly 15%. Precise devices send smaller, more frequent steps.
+    let exponent = min(0.5, max(-0.5, delta * (event.hasPreciseScrollingDeltas ? 0.012 : 0.14)))
+    let scale = min(pdf.maxScaleFactor, max(pdf.minScaleFactor, pdf.scaleFactor * exp(exponent)))
+    if scale != pdf.scaleFactor {
+      fitWork?.cancel()
+      state?.fit = "manual"
+      pdf.autoScales = false
+      pdf.scaleFactor = scale
+    }
+    return true
+  }
   @objc func zoomIn() {
     didActivate?()
     state?.fit = "manual"

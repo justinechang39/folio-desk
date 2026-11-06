@@ -1,7 +1,43 @@
 import AppKit
 import PDFKit
 
+// Supply window-local coordinates so AppKit can dispatch without moving the user's mouse.
+private final class TestWheelEvent: NSEvent {
+  var target: NSWindow!
+  var point = NSPoint.zero
+  var delta: CGFloat = 1
+  var modifiers: NSEvent.ModifierFlags = [.command]
+  override var type: EventType { .scrollWheel }
+  override var window: NSWindow? { target }
+  override var locationInWindow: NSPoint { point }
+  override var scrollingDeltaY: CGFloat { delta }
+  override var hasPreciseScrollingDeltas: Bool { false }
+  override var isDirectionInvertedFromDevice: Bool { false }
+  override var momentumPhase: Phase { [] }
+  override var modifierFlags: ModifierFlags { modifiers }
+}
+
 extension Application {
+  private func checkWheelZoom() {
+    let pane = panes[1]
+    let otherScale = panes[0].pdf.scaleFactor
+    let initial = pane.pdf.scaleFactor
+    let wheel = TestWheelEvent()
+    wheel.target = window
+    wheel.point = pane.pdf.convert(NSPoint(x: pane.pdf.bounds.midX, y: pane.pdf.bounds.midY), to: nil)
+    workspace.focused = 0
+    wheel.modifiers = []
+    checks["plainWheelPassesThrough"] = !pane.handleCommandScroll(wheel)
+    wheel.modifiers = [.command]
+    NSApp.sendEvent(wheel)
+    checks["commandWheelZoomsHoveredPane"] = pane.pdf.scaleFactor > initial
+      && pane.state?.fit == "manual" && workspace.focused == 1
+      && panes[0].pdf.scaleFactor == otherScale
+    wheel.delta = -1
+    NSApp.sendEvent(wheel)
+    checks["commandWheelZoomsBackOut"] = abs(pane.pdf.scaleFactor - initial) < 0.0001
+  }
+
   func runRestoreTest() {
     let expected = Dictionary(
       uniqueKeysWithValues: panes.compactMap { pane -> (String, (Int, Double, Double?))? in
@@ -117,6 +153,7 @@ extension Application {
       finishBenchmark(error: "Missing native fixture documents")
       return
     }
+    checkWheelZoom()
     let originalWorkspace = workspace
     let originalIDs = Set(originalWorkspace.documents.map(\.id))
     let originalTabCount = session.views.count
