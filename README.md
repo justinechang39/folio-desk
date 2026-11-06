@@ -4,7 +4,7 @@ A native macOS workspace for reading PDFs side by side. Compare question papers 
 
 ![Native Folio Desk workspace](docs/workspace.png)
 
-Folio 0.3 uses **Apple PDFKit exclusively** for PDF display, continuous scrolling, pinch zoom, selection, and search. Rust handles PDF validation and durable session storage; Swift/AppKit provides the native interface. There is no webview, PDF.js renderer, Node runtime, LibreOffice dependency, or renderer switch.
+Folio uses **Apple PDFKit exclusively** for PDF display, continuous scrolling, pinch zoom, selection, and search. Rust handles PDF validation and durable session storage; Swift/AppKit provides the native interface. There is no webview, PDF.js renderer, Node runtime, LibreOffice dependency, or renderer switch.
 
 ## Install
 
@@ -17,8 +17,9 @@ The app is ad-hoc signed, not notarized by Apple. For a downloaded build, macOS 
 - Each tab is a workspace. Use **+**, **Rename**, and **×** to manage tabs.
 - Choose **Single**, **Side by side**, **Stacked**, **Three columns**, or **2 × 2**. Drag dividers to resize panes. Layout changes retain extra PDFs in the document list.
 - **Add PDFs…**, a pane's **Open…** button, Finder's **Open With → Folio Desk**, or dropping files into a pane opens PDFs. Only PDFs up to 256 MB each are accepted.
-- Open the same PDF in several panes using each pane’s **Open…** button, a file drop, or **Open in pane…** in the document’s right-click menu. Each view keeps its own page, scroll position, zoom, and rotation, including after restarting. **Link pages** remains optional.
-- Click a document to display it in the active pane; if it is already visible elsewhere, Folio opens an independent view alongside it. Drag its row to a pane to swap/assign it, or to another tab to move it. Right-click a row for pane assignments, moving to another/new workspace, showing it in Finder, or removing it. Drag rows within the document list to reorder them.
+- To read two parts of one PDF, click the split-pane icon beside its name or in its pane header. **View → Compare Side by Side** (Command + backslash) does the same. A new view starts where you are. If a second view already exists, Folio reuses its reading position.
+- The sidebar labels each view’s pane. Click **Left pane** or **Right pane** to focus that view. The panes scroll and zoom independently. Starting a new comparison exits **Focus** and switches off **Link pages** for that workspace.
+- To place a PDF in a specific pane, drop the file there, use its **Open…** button, or right-click the document and choose **Open in pane…**. Drag document rows to swap panes, reorder the list, or move a document to another tab. Each view keeps its page, zoom, and rotation when you restart Folio.
 - Scroll and pinch independently in each pane. Hold **⌘ Command** and roll the mouse wheel up to zoom in or down to zoom out in the pane under the pointer. Use **−/+**, **Width**, **Page**, the page-number field, and rotation controls. Zoom spans 10–800%.
 - **Focus** expands the active pane; press Escape or **Focus** again to restore the layout. Clicking, pinching, or scrolling in a pane makes it active for keyboard controls.
 - **Link pages** synchronizes page numbers across visible PDFs. Shorter documents stop at their last page; this does not infer corresponding content or synchronize exact scroll offsets.
@@ -42,6 +43,7 @@ Choose **Orange** (default), **Nord**, **Dracula**, or **Solarized**, independen
 | ⌘+ / ⌘− | Zoom active pane |
 | ⌘0 | Fit whole page |
 | ⌘F | Show/hide search in active pane |
+| ⌘\\ | Compare the active PDF side by side |
 | Escape | Restore layout from focused pane |
 | ⌘Q | Save and quit |
 

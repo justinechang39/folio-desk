@@ -22,6 +22,12 @@ final class TabButton: NSButton {
 }
 final class DocumentTable: NSTableView {
   var menuForRow: ((Int) -> NSMenu?)?
+  override func validateProposedFirstResponder(_ responder: NSResponder, for event: NSEvent?) -> Bool {
+    if let button = responder as? NSButton, button.action == #selector(Application.compareRow(_:)) {
+      return true
+    }
+    return super.validateProposedFirstResponder(responder, for: event)
+  }
   override func menu(for event: NSEvent) -> NSMenu? {
     let index = row(at: convert(event.locationInWindow, from: nil))
     guard index >= 0 else { return nil }
@@ -339,6 +345,9 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
         self.buildLayout()
         self.scheduleSave()
       }
+      pane.compareRequested = { [weak self, weak pane] in
+        if let id = pane?.state?.id { self?.compareDocument(id) }
+      }
       pane.stateChanged = { [weak self] in self?.scheduleSave() }
       pane.pageChanged = { [weak self, weak pane] number in
         guard let self, let pane, !self.restoringLayout, !self.linking, self.workspace.linked,
@@ -361,6 +370,9 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
         }
         paneCache[id] = pane
       }
+      pane.compareControl.isEnabled = pane.state != nil
+      pane.compareControl.setAccessibilityLabel(
+        "Compare \(pane.state?.name ?? "this PDF") side by side")
       return pane
     }
     func split(_ children: [NSViewController], vertical: Bool) -> NSSplitViewController {
@@ -609,28 +621,111 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
   func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView?
   {
     let doc = workspace.documents[row]
-    let field = NSTextField(
-      labelWithString: (workspace.slots.contains(doc.id) ? "●  " : "    ") + doc.name + "  ≡")
+    let slot = workspace.slots.firstIndex(of: doc.id)
+    let field = NSTextField(labelWithString: doc.name)
     field.lineBreakMode = .byTruncatingMiddle
-    field.font = .systemFont(
-      ofSize: 12, weight: workspace.slots.contains(doc.id) ? .medium : .regular)
+    field.font = .systemFont(ofSize: 12, weight: slot == nil ? .regular : .medium)
     field.toolTip = "\(doc.path)\nDrag to a pane or workspace tab. Right-click for options."
-    field.textColor = workspace.slots.contains(doc.id) ? accent : .labelColor
+    field.textColor = slot == nil ? .labelColor : accent
+
+    let labels = NSStackView(views: [field])
+    labels.orientation = .vertical
+    labels.alignment = .leading
+    labels.spacing = 1
+    let sameFile = workspace.documents.filter { $0.path == doc.path }
+    if sameFile.count > 1 {
+      let location: String
+      if let slot {
+        switch workspace.layout {
+        case "columns": location = ["Left pane", "Right pane"][slot]
+        case "rows": location = ["Top pane", "Bottom pane"][slot]
+        case "triple": location = ["Left pane", "Middle pane", "Right pane"][slot]
+        case "grid": location = ["Top left", "Top right", "Bottom left", "Bottom right"][slot]
+        default: location = "Current pane"
+        }
+      } else {
+        location = "Saved view"
+      }
+      let detail = NSTextField(labelWithString: location)
+      detail.font = .systemFont(ofSize: 10)
+      detail.textColor = .secondaryLabelColor
+      labels.addArrangedSubview(detail)
+    }
+    let compared = slot != nil && sameFile.filter { workspace.slots.contains($0.id) }.count > 1
+    let compare = compareButton(
+      self, #selector(compareRow(_:)), name: doc.name, filled: compared)
+    compare.identifier = NSUserInterfaceItemIdentifier(doc.id)
+    compare.isBordered = false
+    compare.contentTintColor = compared ? accent : .secondaryLabelColor
     let cell = NSTableCellView()
-    cell.addSubview(field)
-    field.translatesAutoresizingMaskIntoConstraints = false
+    cell.addSubview(labels)
+    cell.addSubview(compare)
+    labels.translatesAutoresizingMaskIntoConstraints = false
+    compare.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
-      field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-      field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
-      field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+      labels.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+      labels.trailingAnchor.constraint(equalTo: compare.leadingAnchor, constant: -4),
+      labels.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+      field.widthAnchor.constraint(equalTo: labels.widthAnchor),
+      compare.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+      compare.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+      compare.widthAnchor.constraint(equalToConstant: 32),
+      compare.heightAnchor.constraint(equalToConstant: 32),
     ])
     return cell
+  }
+  @objc func compareRow(_ sender: NSButton) {
+    if let id = sender.identifier?.rawValue { compareDocument(id) }
+  }
+  /// The document list's selection when it has keyboard focus, otherwise the active pane.
+  var compareTarget: String? {
+    if window.firstResponder === table, workspace.documents.indices.contains(table.selectedRow) {
+      return workspace.documents[table.selectedRow].id
+    }
+    return activePane?.state?.id
+  }
+  @objc func compareSideBySide() {
+    if let id = compareTarget { compareDocument(id) }
+  }
+  func compareDocument(_ id: String) {
+    guard let doc = workspace.documents.first(where: { $0.id == id }) else { return }
+    capturePanes()
+    let result = workspace.compare(id)
+    guard result != .unavailable else { return }
+    // Repeating the action leaves dividers and every reading position untouched.
+    if result != .unchanged || focusedOnly {
+      focusedOnly = false
+      refreshChrome()
+      buildLayout()
+      scheduleSave()
+    }
+    NSAccessibility.post(
+      element: NSApplication.shared, notification: .announcementRequested,
+      userInfo: [
+        .announcement: result == .unchanged
+          ? "\(doc.name) is already side by side" : "\(doc.name) is side by side in two views",
+        .priority: NSAccessibilityPriorityLevel.high.rawValue,
+      ])
   }
   @objc func selectDocument() {
     let row = table.selectedRow
     guard workspace.documents.indices.contains(row) else { return }
+    let doc = workspace.documents[row]
+    // Selecting a labeled comparison view should take the reader to that pane.
+    if let slot = workspace.slots.firstIndex(of: doc.id),
+      workspace.documents.contains(where: {
+        $0.id != doc.id && $0.path == doc.path && workspace.slots.contains($0.id)
+      })
+    {
+      let reveal = focusedOnly && workspace.focused != slot
+      workspace.focused = slot
+      if reveal { buildLayout() }
+      window.makeFirstResponder(activePane?.pdf)
+      scheduleSave()
+      return
+    }
     capturePanes()
-    workspace.show(workspace.documents[row].id, in: workspace.focused)
+    workspace.show(doc.id, in: workspace.focused)
     buildLayout()
     table.reloadData()
     scheduleSave()
@@ -684,6 +779,8 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
       item.representedObject = ["id": id, "op": operation, "dest": destination]
       menu.addItem(item)
     }
+    item("Compare side by side", "compare")
+    menu.addItem(.separator())
     for slot in workspace.slots.indices { item("Open in pane \(slot+1)", "assign", String(slot)) }
     menu.addItem(.separator())
     for view in session.views where view.id != session.active {
@@ -699,6 +796,7 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     guard let data = sender.representedObject as? [String: String], let id = data["id"] else {
       return
     }
+    if data["op"] == "compare" { return compareDocument(id) }
     capturePanes()
     switch data["op"] {
     case "assign": workspace.show(id, in: Int(data["dest"] ?? "0") ?? 0)
@@ -771,12 +869,19 @@ final class Application: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTa
     _ = add(view, "Zoom Out", #selector(zoomOut), "-", target: self)
     _ = add(view, "Fit Page", #selector(fitPage), "0", target: self)
     _ = add(view, "Focus Pane / Restore Layout", #selector(toggleFocus), "", target: self)
+    _ = add(view, "Compare Side by Side", #selector(compareSideBySide), "\\", target: self)
+    view.addItem(.separator())
     for index in 0..<9 {
       let item = add(
         view, "Workspace \(index+1)", #selector(selectNumberedTab(_:)), "\(index+1)", target: self)
       item.tag = index
     }
     NSApp.mainMenu = menu
+  }
+}
+extension Application: NSMenuItemValidation {
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    item.action != #selector(compareSideBySide) || compareTarget != nil
   }
 }
 

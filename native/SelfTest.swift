@@ -141,6 +141,148 @@ extension Application {
     refreshChrome()
     buildLayout()
   }
+  private func capturedPage(_ id: String?) -> Int? {
+    capturePanes()
+    return workspace.documents.first { $0.id == id }?.page
+  }
+  /// One-click comparison: reuse views, keep reading state, never touch other workspaces.
+  func checkCompareSideBySide(path: String, otherPath: String, thirdPath: String) {
+    let original = workspace
+    capturePanes()
+    let before = session.views.map { ($0.id, $0.documents.map(\.id), $0.slots, $0.layout) }
+    let compare = Workspace(name: "Compare")
+    session.views.append(compare)
+    session.active = compare.id
+    compare.setLayout("single")
+    refreshChrome()
+    buildLayout()
+    checks["compareMenuDisabledWithoutPDF"] = !(NSApp.mainMenu?.items.contains { top in
+      top.submenu?.items.contains { $0.keyEquivalent == "\\" && validateMenuItem($0) } == true
+    } ?? true)
+    importURLs([URL(fileURLWithPath: otherPath)], target: 0)
+    importURLs([URL(fileURLWithPath: path)], target: 0)
+    let answersID = compare.documents[0].id
+    let questionsID = compare.slots[0]!
+    let left = panes[0]
+    let leftPDF = left.pdf.document
+    left.fitWidth()
+    left.navigate(to: 3)
+    compare.linked = true
+    focusedOnly = true
+    refreshChrome()
+    buildLayout()
+    // Pane button: the path available when the document list is hidden.
+    checks["comparePaneButtonAccessible"] = left.compareControl.isEnabled
+      && left.compareControl.toolTip == compareHelp
+      && left.compareControl.accessibilityLabel()?.contains("questions.pdf") == true
+    left.compareControl.performClick(nil)
+    let copyID = compare.slots[1]
+    let copy = compare.documents.first { $0.id == copyID }
+    checks["compareOpensTwoIndependentViews"] = compare.layout == "columns"
+      && compare.slots[0] == questionsID && copy?.path == path && copyID != questionsID
+      && compare.documents.count == 3 && panes.count == 2 && panes[0] === left
+      && left.pdf.document === leftPDF && panes[1].pdf.document != nil
+      && panes[1].pdf.document !== leftPDF
+    checks["compareCopiesReadingPosition"] = copy?.page == 3 && copy?.fit == "width"
+    checks["compareRestoresLayoutAndUnlinks"] = !focusedOnly && !compare.linked
+      && linkButton.state == .off && layoutPicker.indexOfSelectedItem == 1 && compare.focused == 1
+    panes[1].navigate(to: 4)
+    let split = splitController
+    // Repeat from the document row, its context menu, and the menu command.
+    let row = compare.documents.firstIndex { $0.id == questionsID }!
+    let rowButton = tableView(table, viewFor: nil, row: row)?.subviews
+      .compactMap { $0 as? NSButton }.first
+    checks["compareRowButtonAccessible"] = rowButton?.image != nil
+      && rowButton?.toolTip == compareHelp
+      && rowButton?.accessibilityLabel() == "Compare questions.pdf side by side"
+    if let rowButton { NSApp.sendAction(rowButton.action!, to: rowButton.target, from: rowButton) }
+    checks["compareContextMenuItem"] = documentMenu(row)?.items.first?.title == "Compare side by side"
+    workspace.focused = 1
+    checks["compareMenuEnabled"] = NSApp.mainMenu?.items.contains { top in
+      top.submenu?.items.contains {
+        $0.keyEquivalent == "\\" && $0.keyEquivalentModifierMask == .command && validateMenuItem($0)
+      } == true
+    } == true
+    window.makeFirstResponder(panes[1].pdf)
+    NSApp.sendAction(#selector(compareSideBySide), to: self, from: nil)
+    checks["compareRepeatAddsNoCopies"] = compare.documents.count == 3
+      && compare.slots == [questionsID, copyID] && splitController === split
+      && capturedPage(questionsID) == 3 && capturedPage(copyID) == 4
+    table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+    selectDocument()
+    checks["compareSelectExistingSide"] = compare.focused == 0 && splitController === split
+      && compare.slots == [questionsID, copyID] && compare.documents.count == 3
+    // A hidden second view is reused with its own position, whichever view is chosen.
+    compare.setLayout("single")
+    buildLayout()
+    compareDocument(copyID!)
+    checks["compareReusesHiddenView"] = compare.documents.count == 3
+      && compare.slots == [questionsID, copyID] && panes[0] === left
+      && capturedPage(questionsID) == 3 && capturedPage(copyID) == 4
+    // Multi-column layouts stay; only the neighbouring pane changes.
+    importURLs([URL(fileURLWithPath: thirdPath)])
+    let referenceID = compare.documents.last!.id
+    compare.setLayout("triple")
+    compare.slots = [answersID, questionsID, referenceID]
+    buildLayout()
+    compareDocument(questionsID)
+    checks["compareKeepsMultiColumnLayout"] = compare.layout == "triple"
+      && compare.slots == [answersID, questionsID, copyID]
+      && compare.documents.count == 4 && panes.count == 3
+    let existingPair = [copyID, questionsID, referenceID]
+    compare.slots = existingPair
+    checks["compareReusesLeftNeighborInMiddleColumn"] =
+      compare.compare(questionsID) == .unchanged && compare.slots == existingPair
+    compare.setLayout("grid")
+    compare.slots = [answersID, referenceID, nil, questionsID]
+    compare.compare(questionsID)
+    checks["compareUsesLeftNeighbourAtRightEdge"] =
+      compare.slots == [answersID, referenceID, copyID, questionsID]
+    compare.setLayout("rows")
+    compare.compare(answersID)
+    checks["compareStackedBecomesSideBySide"] = compare.layout == "columns"
+      && compare.documents.count == 5 && compare.slots[0] == answersID
+      && compare.documents.first { $0.id == compare.slots[1] }?.path == otherPath
+    buildLayout()
+    do {
+      let restored = try Session.restore(session.json()).views.first { $0.id == compare.id }!
+      checks["compareStateRoundTrip"] = restored.slots == compare.slots
+        && restored.documents.filter { $0.path == path }.map(\.page) == [3, 4]
+    } catch { checks["compareStateRoundTrip"] = false }
+    // Click an unselected real table row while a different PDF is showing.
+    compare.setLayout("single")
+    compare.assign(answersID, to: 0)
+    refreshChrome()
+    buildLayout()
+    table.deselectAll(nil)
+    let button = table.view(atColumn: 0, row: row, makeIfNecessary: true)?.subviews
+      .compactMap { $0 as? NSButton }.first
+    if let button {
+      let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+      func mouse(_ type: NSEvent.EventType) -> NSEvent {
+        NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+          context: nil, eventNumber: 1, clickCount: 1, pressure: 1)!
+      }
+      NSApp.postEvent(mouse(.leftMouseUp), atStart: true)
+      NSApp.sendEvent(mouse(.leftMouseDown))
+      // Some AppKit versions deliver button mouse-up outside the tracking loop.
+      if let up = NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast,
+        inMode: .default, dequeue: true) {
+        NSApp.sendEvent(up)
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+    }
+    checks["compareFirstClickOnSidebarIcon"] = compare.layout == "columns"
+      && Set(compare.slots.compactMap { $0 }) == Set([questionsID, copyID!])
+    session.views.removeAll { $0 === compare }
+    session.active = original.id
+    refreshChrome()
+    buildLayout()
+    checks["compareLeavesOtherWorkspaces"] =
+      session.views.map { ($0.id, $0.documents.map(\.id), $0.slots, $0.layout) }
+      .elementsEqual(before) { $0.0 == $1.0 && $0.1 == $1.1 && $0.2 == $1.2 && $0.3 == $1.3 }
+  }
   func runSelfTest() {
     if arguments.contains("--restore") {
       runRestoreTest()
@@ -193,6 +335,10 @@ extension Application {
       Set(workspace.documents.map(\.id)) == originalIDs
       && session.views.count == originalTabCount + 1
     checkDuplicateViews(in: moved, path: firstDoc.path)
+    let fixturePaths = originalWorkspace.documents.map(\.path)
+    checkCompareSideBySide(
+      path: firstDoc.path, otherPath: fixturePaths.first { $0.hasSuffix("answers.pdf") }!,
+      thirdPath: fixturePaths.first { $0.hasSuffix("reference.pdf") }!)
     guard let pane = paneCache[firstDoc.id] else {
       finishBenchmark(error: "Missing moved PDF")
       return

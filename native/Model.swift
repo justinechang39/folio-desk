@@ -51,6 +51,7 @@ final class DocumentState: Codable {
     return copy
   }
 }
+enum CompareResult { case unavailable, unchanged, arranged }
 final class Workspace: Codable {
   var id = UUID().uuidString
   var name = "Workspace 1"
@@ -92,6 +93,42 @@ final class Workspace: Codable {
     if !documents.contains(where: { $0.id == doc.id }) { documents.append(doc) }
     if let slot { assign(doc.id, to: slot) }
     return doc
+  }
+  /// Shows two independent views of a document's PDF in horizontally adjacent panes.
+  /// Another view of the same file is reused before a copy is made, so repeated
+  /// requests never add copies or reset either view's reading position.
+  @discardableResult
+  func compare(_ id: String) -> CompareResult {
+    guard let doc = documents.first(where: { $0.id == id }) else { return .unavailable }
+    let others = documents.filter { $0.path == doc.path && $0.id != id }
+    let partner = others.first { slots.contains($0.id) } ?? others.first
+    // Multi-column layouts already have adjacent panes; other layouts become Side by side.
+    let keepsLayout = ["columns", "triple", "grid"].contains(layout)
+    if !keepsLayout { setLayout("columns") }
+    // Keep whichever view is already visible in place; otherwise use the active pane.
+    let anchor =
+      partner.flatMap { slots.contains($0.id) && !slots.contains(id) ? $0.id : nil } ?? id
+    let anchorSlot = slots.firstIndex(of: anchor) ?? focused
+    // In three columns the middle pane has neighbors on both sides. Prefer
+    // an existing comparison, then an empty pane, before displacing a reader.
+    let neighbors = [anchorSlot + 1, anchorSlot - 1].filter {
+      slots.indices.contains($0) && (layout != "grid" || $0 / 2 == anchorSlot / 2)
+    }
+    if keepsLayout, anchor == id, slots[anchorSlot] == id,
+      neighbors.contains(where: { slot in others.contains { $0.id == slots[slot] } })
+    {
+      return .unchanged
+    }
+    guard let neighbor = neighbors.first(where: { slots[$0] == nil }) ?? neighbors.first else {
+      return .unavailable
+    }
+    let other = partner ?? doc.independentCopy()
+    if partner == nil { documents.append(other) }
+    assign(anchor, to: anchorSlot)
+    assign(anchor == id ? other.id : id, to: neighbor)
+    // Linked pages would pull both views of one file onto the same page.
+    linked = false
+    return .arranged
   }
   func setLayout(_ value: String) {
     layout = value

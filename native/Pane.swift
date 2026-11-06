@@ -13,6 +13,22 @@ func button(_ title: String, _ target: AnyObject, _ action: Selector, help: Stri
   return button
 }
 
+let compareHelp = "Compare side by side (⌘\\)\nOpen two independent views of this PDF"
+/// Image-only control for the side-by-side action, shared by panes and document rows.
+func compareButton(_ target: AnyObject, _ action: Selector, name: String, filled: Bool = false)
+  -> NSButton
+{
+  let symbol = filled ? "rectangle.split.2x1.fill" : "rectangle.split.2x1"
+  let label = "Compare \(name) side by side"
+  let button = NSButton(title: "", target: target, action: action)
+  button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+  button.imagePosition = .imageOnly
+  button.toolTip = compareHelp
+  button.setAccessibilityLabel(label)
+  button.setAccessibilityHelp("Opens two independent views of this PDF side by side")
+  return button
+}
+
 private enum FileError: LocalizedError {
   case notPDF, unreadable
   var errorDescription: String? {
@@ -93,6 +109,8 @@ final class Pane: NSViewController {
   var stateChanged: (() -> Void)?
   var pageChanged: ((Int) -> Void)?
   var documentDropped: ((String, String) -> Void)?
+  var compareRequested: (() -> Void)?
+  lazy var compareControl = compareButton(self, #selector(Pane.compare), name: "this PDF")
   var restoring = false
   var fitting = false
   var lastReportedPage = 0
@@ -122,6 +140,11 @@ final class Pane: NSViewController {
     heading.addArrangedSubview(titleLabel)
     heading.addArrangedSubview(
       button("Open…", self, #selector(openFile), help: "Open a PDF in this pane"))
+    compareControl.bezelStyle = .rounded
+    compareControl.contentTintColor = accent
+    compareControl.isEnabled = false
+    compareControl.heightAnchor.constraint(greaterThanOrEqualToConstant: 30).isActive = true
+    heading.addArrangedSubview(compareControl)
     let controls = NSStackView(views: [
       button("−", self, #selector(zoomOut), help: "Zoom out"), zoomLabel,
       button("+", self, #selector(zoomIn), help: "Zoom in"),
@@ -329,6 +352,10 @@ final class Pane: NSViewController {
     panel.beginSheetModal(for: window) { [weak self] result in
       if result == .OK { self?.openURLs?(panel.urls) }
     }
+  }
+  @objc func compare() {
+    didActivate?()
+    compareRequested?()
   }
   // Intercept before PDFKit's nested scroll view consumes the wheel event.
   func handleCommandScroll(_ event: NSEvent) -> Bool {
